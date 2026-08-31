@@ -60,6 +60,7 @@
 #include "mozilla/ViewportUtils.h"
 #include "mozilla/dom/BrowserChild.h"
 #include "mozilla/dom/HTMLCanvasElement.h"
+#include "mozilla/dom/PerformanceContainerTiming.h"
 #include "mozilla/dom/PerformanceMainThread.h"
 #include "mozilla/dom/RemoteBrowser.h"
 #include "mozilla/dom/SVGElement.h"
@@ -3573,9 +3574,15 @@ bool nsDisplayBackgroundImage::CreateWebRenderCommands(
     if (imgRequestProxy* requestProxy = mBackgroundStyle->StyleBackground()
                                             ->mImage.mLayers[mLayer]
                                             .mImage.GetImageRequest()) {
+      nsRect rectRelativeToSelf = mBounds - ToReferenceFrame();
+      Element* element = content->AsElement();
+
+      ContainerTimingHelpers::MaybeProcessPaintForContainer(
+          element, StyleFrame(), rectRelativeToSelf);
+
       // LCP don't consider gradient backgrounds.
-      LCPHelpers::FinalizeLCPEntryForImage(content->AsElement(), requestProxy,
-                                           mBounds - ToReferenceFrame());
+      LCPHelpers::FinalizeLCPEntryForImage(element, requestProxy,
+                                           rectRelativeToSelf);
     }
   }
 
@@ -4601,8 +4608,8 @@ bool nsDisplayBoxShadowOuter::CreateWebRenderCommands(
     nscoord spread = shadow.spread.ToAppUnits();
     float spreadRadius = float(spread) / float(appUnitsPerDevPixel);
 
-    wr::BorderRadius borderRadius{};
-    wr::BorderRadius shadowRadius{};
+    wr::BorderRadius borderRadius = wr::EmptyBorderRadius();
+    wr::BorderRadius shadowRadius = wr::EmptyBorderRadius();
     if (hasBorderRadius) {
       borderRadius = wr::ToBorderRadius(borderRadii);
       if (spreadRadius) {
@@ -4722,8 +4729,8 @@ void nsDisplayBoxShadowInner::CreateInsetBoxShadowWebRenderCommands(
     nscoord spread = shadow.spread.ToAppUnits();
     float spreadRadius = spread / float(appUnitsPerDevPixel);
 
-    wr::BorderRadius borderRadius{};
-    wr::BorderRadius shadowRadius{};
+    wr::BorderRadius borderRadius = wr::EmptyBorderRadius();
+    wr::BorderRadius shadowRadius = wr::EmptyBorderRadius();
     if (hasBorderRadius) {
       borderRadius = wr::ToBorderRadius(innerRadii);
       if (spreadRadius) {
@@ -7758,8 +7765,12 @@ void nsDisplayText::Paint(nsDisplayListBuilder* aBuilder, gfxContext* aCtx) {
   RenderToContext(aCtx, aBuilder, GetPaintRect(aBuilder, aCtx));
 
   auto* textFrame = static_cast<nsTextFrame*>(mFrame);
-  LCPTextFrameHelper::MaybeUnionTextFrame(textFrame,
-                                          mBounds - ToReferenceFrame());
+  nsRect boundsRelativeToSelf = mBounds - ToReferenceFrame();
+
+  ContainerTimingHelpers::MaybeProcessPaintForContainer(
+      textFrame->GetContent(), textFrame, boundsRelativeToSelf);
+
+  LCPTextFrameHelper::MaybeUnionTextFrame(textFrame, boundsRelativeToSelf);
 }
 
 bool nsDisplayText::CreateWebRenderCommands(
@@ -7849,7 +7860,12 @@ bool nsDisplayText::CreateWebRenderCommands(
   gfxContext* textDrawer = aBuilder.GetTextContext(aResources, aSc, aManager,
                                                    this, bounds, deviceOffset);
 
-  LCPTextFrameHelper::MaybeUnionTextFrame(f, bounds - ToReferenceFrame());
+  nsRect boundsRelativeToSelf = bounds - ToReferenceFrame();
+
+  ContainerTimingHelpers::MaybeProcessPaintForContainer(f->GetContent(), f,
+                                                        boundsRelativeToSelf);
+
+  LCPTextFrameHelper::MaybeUnionTextFrame(f, boundsRelativeToSelf);
 
   RenderToContext(textDrawer, aDisplayListBuilder, mVisibleRect,
                   aBuilder.GetInheritedOpacity(), true);

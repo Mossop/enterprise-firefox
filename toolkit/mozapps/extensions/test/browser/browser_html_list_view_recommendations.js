@@ -52,6 +52,9 @@ add_setup(async function () {
     set: [
       // Disable personalized recommendations, they will break the data URI.
       ["browser.discovery.enabled", false],
+      // The list view recommendations are not enabled by default in every
+      // build.
+      ["extensions.htmlaboutaddons.recommendations.enabled", true],
       ["extensions.getAddons.discovery.api_url", `data:;base64,${results}`],
       [
         "extensions.recommendations.themeRecommendationUrl",
@@ -207,6 +210,7 @@ async function testListRecommendations({ type }) {
   await TestUtils.waitForCondition(() => {
     return panel.children.length == 1 && panel.firstElementChild.id == popupId;
   });
+  await BrowserTestUtils.waitForPopupEvent(panel, "shown");
 
   // Dismiss the popup.
   panel.firstElementChild.button.click();

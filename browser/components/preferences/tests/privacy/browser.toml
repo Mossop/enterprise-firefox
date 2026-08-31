@@ -14,11 +14,17 @@ support-files = [
 ]
 tags = "os_integration"
 
+["browser_container_select.js"]
+
 ["browser_containers_dialog_size.js"]
 
 ["browser_containers_name_input.js"]
 
 ["browser_containers_reorder.js"]
+
+["browser_containers_site_associations.js"]
+
+["browser_containers_telemetry.js"]
 
 ["browser_privacy_allowListPreference.js"]
 skip-if = [
@@ -40,6 +46,7 @@ skip-if = [
 ["browser_privacy_gpc.js"]
 
 ["browser_privacy_ipprotection.js"]
+skip-if = ["enterprise"] # Enterprise builds repurpose the VPN as the Access Connector and hide the VPN section in the privacy preferences.
 
 ["browser_privacy_passwordGenerationAndAutofill.js"]
 

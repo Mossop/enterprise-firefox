@@ -1393,7 +1393,7 @@ SettingGroupManager.registerGroups({
               {
                 value: Ci.nsICookieService.BEHAVIOR_REJECT_TRACKER.toString(),
                 l10nId:
-                  "preferences-etp-custom-cookie-behavior-block-cross-site-cookies",
+                  "preferences-etp-custom-cookie-behavior-block-cross-site-tracking-cookies",
                 hidden:
                   Services.prefs.getIntPref("network.cookie.cookieBehavior") !==
                   Ci.nsICookieService.BEHAVIOR_REJECT_TRACKER,
@@ -1505,6 +1505,9 @@ SettingGroupManager.registerGroups({
     l10nId: "ip-protection-description-1",
     headingLevel: 2,
     supportPage: "built-in-vpn",
+    get hidden() {
+      return lazy.AppConstants.MOZ_ENTERPRISE;
+    },
     items: [
       {
         id: "ipProtectionNotOptedInSection",
