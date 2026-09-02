@@ -4777,6 +4777,10 @@ int XREMain::XRE_mainInit(bool* aExitFlag,
 #endif
 
   if (requestedHeadless) {
+    // Upstream uses CheckArg() directly that consumes the argument, but
+    // we have RequestedHeadlessMode() that does not, so let's make sure it
+    // is consumed to avoid leaking it.
+    CheckArg("headless");
     PR_SetEnv("MOZ_HEADLESS=1");
   }
 

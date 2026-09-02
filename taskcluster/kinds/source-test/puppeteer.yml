@@ -43,6 +43,7 @@ puppeteer-{this_chunk}:
     run:  # Bug 1651542: Use screenshot feature to warm-up the font cache before the actual test
         using: run-task
         command: >
+            export MOZ_BYPASS_FELT=1 &&
             cd $GECKO_PATH/ &&
             cp -r $MOZ_FETCHES_DIR/puppeteer remote/test/ &&
             $MOZ_FETCHES_DIR/firefox/firefox --screenshot http://example.org &&
