@@ -731,6 +731,7 @@ tasks:
                           'baseRef == "enterprise-release" || baseRef == "refs/heads/enterprise-release"': "refs/heads/release"
                           'project == "enterprise-firefox-try"': "refs/heads/main"
                           $default: "master"
+                  commBaseRev: e9464d8982e18052d9af48346c6582ad0f549ac0
                   commHeadRepoUrl: https://github.com/thunderbird/thunderbird-desktop
                   commHeadRef:
                       $switch:
@@ -739,6 +740,7 @@ tasks:
                           'baseRef == "enterprise-release" || baseRef == "refs/heads/enterprise-release"': "refs/heads/release"
                           'project == "enterprise-firefox-try"': "refs/heads/main"
                           $default: "master"
+                  commHeadRev: e9464d8982e18052d9af48346c6582ad0f549ac0
                   shortRef:
                       $if: 'ref[:11] == "refs/heads/"'
                       then: {$eval: 'ref[11:]'}
@@ -764,7 +766,7 @@ tasks:
                           expires: {$fromNow: '1 year 1 second'}
                           metadata:
                               owner: "${ownerEmail}"
-                              source: "${commHeadRepoUrl}/raw/${headRev}/.taskcluster.yml"
+                              source: "${commHeadRepoUrl}/raw/${commHeadRev}/.taskcluster.yml"
                               name: "Comm Decision Task (${eventType})"
                               description: 'The task that creates all Thunderbird tasks in the task graph'
 
@@ -828,8 +830,10 @@ tasks:
                                         GECKO_REPOSITORY_TYPE: git
                                         COMM_BASE_REPOSITORY: '${commBaseRepoUrl}'
                                         COMM_BASE_REF: '${commBaseRef}'
+                                        COMM_BASE_REV: '${commBaseRev}'
                                         COMM_HEAD_REPOSITORY: '${commHeadRepoUrl}'
                                         COMM_HEAD_REF: '${commHeadRef}'
+                                        COMM_HEAD_REV: '${commHeadRev}'
                                         COMM_REPOSITORY_TYPE: git
                                         REPOSITORIES: {$json: {gecko: "Mozilla Firefox", comm: "Mozilla Thunderbird"}}
                                         TASKCLUSTER_CACHES: /builds/worker/checkouts
@@ -855,13 +859,6 @@ tasks:
                               image: mozillareleases/taskgraph:run-task-latest
                               maxRunTime: 1800
                               command:
-                                  - bash
-                                  - -c
-                                  - >-
-                                    export COMM_BASE_REV=$(git ls-remote "$COMM_BASE_REPOSITORY" "$COMM_BASE_REF" | cut -f1) &&
-                                    export COMM_HEAD_REV=$(git ls-remote "$COMM_HEAD_REPOSITORY" "$COMM_HEAD_REF" | cut -f1) &&
-                                    exec "$@"
-                                  - sh   # dummy $0, unused, required by bash -c convention
                                   - run-task
                                   - '--gecko-checkout=/builds/worker/checkouts/gecko'
                                   - '--gecko-shallow-clone'
