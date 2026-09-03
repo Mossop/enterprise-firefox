@@ -8,6 +8,13 @@
 #include "mozilla/Logging.h"
 #include "mozilla/Components.h"
 #include "mozilla/HelperMacros.h"
+#if defined(MOZ_ENTERPRISE)
+#  include "mozilla/Printf.h"
+#  ifdef MOZ_BACKGROUNDTASKS
+#    include "mozilla/BackgroundTasks.h"
+#  endif
+#  include "gfxPlatform.h"
+#endif
 #include "nsAppDirectoryServiceDefs.h"
 #include "nsIAppStartup.h"
 #include "nsIChannel.h"
@@ -63,6 +70,20 @@ static nsresult DisplayError(void) {
   return promptService->Alert(nullptr, title.get(), err.get());
 }
 
+#if defined(MOZ_ENTERPRISE)
+// Whether a modal alert can actually be dismissed by a user. Safe to call
+// during prefs-service init: `IsHeadless()` only reads a cached MOZ_HEADLESS,
+// which XRE_mainInit has already set by this point.
+static bool CanPrompt() {
+#  ifdef MOZ_BACKGROUNDTASKS
+  if (BackgroundTasks::IsBackgroundTaskMode()) {
+    return false;
+  }
+#  endif
+  return !gfxPlatform::IsHeadless();
+}
+#endif
+
 // nsISupports Implementation
 
 NS_IMPL_ISUPPORTS(nsReadConfig, nsIObserver)
@@ -96,7 +117,14 @@ NS_IMETHODIMP nsReadConfig::Observe(nsISupports* aSubject, const char* aTopic,
       // by general.config.filename). If it is missing or fails to evaluate,
       // refuse to start regardless of the sandbox setting, matching the
       // historical Netscape AutoConfig requirement.
-      DisplayError();
+      if (CanPrompt()) {
+        DisplayError();
+      } else {
+        // Nobody can dismiss a modal alert here: Alert() would spin a nested
+        // event loop forever and the Quit() below would never run.
+        printf_stderr(
+            "Failed to read the AutoConfig file (general.config.filename).\n");
+      }
       nsCOMPtr<nsIAppStartup> appStartup = components::AppStartup::Service();
       if (appStartup) {
         bool userAllowedQuit = true;
