@@ -173,7 +173,7 @@ EnterprisePoliciesManager.prototype = {
     if (Services.prefs.getBoolPref(PREF_POLICIES_APPLIED, false)) {
       if ("_cleanup" in lazy.Policies) {
         let policyImpl = lazy.Policies._cleanup;
-        this._schedulePolicyActivations("_cleanup", policyImpl);
+        this._schedulePolicyActivations(null, policyImpl);
       }
       Services.prefs.clearUserPref(PREF_POLICIES_APPLIED);
     }
@@ -584,6 +584,8 @@ EnterprisePoliciesManager.prototype = {
    * @param {object} params parameters the policy was last applied with
    */
   _schedulePolicyRemoval(policyName, params) {
+    lazy.PolicyFailures.clear(policyName);
+
     const policyImpl = lazy.Policies[policyName];
     if (!policyImpl) {
       // This means there is an entry in the schema, but no implementation.
@@ -691,7 +693,9 @@ EnterprisePoliciesManager.prototype = {
    * Schedule all "activating" callbacks, meaning any
    * "onRemove" callbacks are skipped
    *
-   * @param {string} policyName policy name
+   * @param {?string} policyName policy name, or null for the callbacks that
+   *   do not belong to a policy an administrator configured, so that no
+   *   failure of theirs is reported against one
    * @param {PolicyImpl} policyImpl policy implementation
    * @param {object} [parsedParams] parsed policy parameters
    */
