@@ -423,7 +423,6 @@ pref("gfx.webrender.debug.texture-cache", false);
 pref("gfx.webrender.debug.texture-cache.clear-evicted", true);
 pref("gfx.webrender.debug.render-targets", false);
 pref("gfx.webrender.debug.gpu-cache", false);
-pref("gfx.webrender.debug.alpha-primitives", false);
 pref("gfx.webrender.debug.profiler", false);
 pref("gfx.webrender.debug.gpu-time-queries", false);
 pref("gfx.webrender.debug.gpu-sample-queries", false);
@@ -431,7 +430,6 @@ pref("gfx.webrender.debug.disable-batching", false);
 pref("gfx.webrender.debug.epochs", false);
 pref("gfx.webrender.debug.echo-driver-messages", false);
 pref("gfx.webrender.debug.show-overdraw", false);
-pref("gfx.webrender.debug.slow-frame-indicator", false);
 pref("gfx.webrender.debug.picture-caching", false);
 pref("gfx.webrender.debug.picture-borders", false);
 pref("gfx.webrender.debug.force-picture-invalidation", false);
@@ -1934,10 +1932,6 @@ pref("dom.ipc.keepProcessesAlive.privilegedabout", 1);
 
 // Disable support for SVG
 pref("svg.disabled", false);
-
-// This pref will cause assertions when a remoteType triggers a process switch
-// to a new remoteType it should not be able to trigger.
-pref("browser.tabs.remote.enforceRemoteTypeRestrictions", false);
 
 // Pref to control whether we use a separate privileged content process
 // for about: pages. This pref name did not age well: we will have multiple
@@ -3700,6 +3694,7 @@ pref("browser.ai.control.smartTabGroups", "default");
 pref("browser.ai.control.linkPreviewKeyPoints", "default");
 pref("browser.ai.control.sidebarChatbot", "default");
 pref("browser.ai.control.smartWindow", "default");
+pref("browser.ai.control.speechRecognition", "default");
 
 // Enable the experimental machine learning inference engine.
 pref("browser.ml.enable", true);
@@ -4153,6 +4148,25 @@ pref("extensions.formautofill.addresses.capture.enabled", true);
 pref("extensions.formautofill.addresses.ignoreAutocompleteOff", true);
 // Supported countries need to follow ISO 3166-1 to align with "browser.search.region"
 pref("extensions.formautofill.addresses.supportedCountries", "US,CA,GB,FR,DE,BR,ES,JP,AT,IN,IT,PL,AU,NL");
+
+// Move desktop addresses to the Application Services autofill store. Read at
+// startup and watched afterwards: the addresses are copied over to the store
+// this asks for, which then serves them once that copy is verified complete.
+pref("extensions.formautofill.addresses.storage.rust.enabled", false);
+// Which store is in fact serving addresses. Managed by Firefox, not a knob:
+// the pref above only asks, and a profile whose copy has not completed keeps
+// reading from where its addresses are.
+pref("extensions.formautofill.addresses.storage.rust.active", false);
+// Run the migration purely to measure it, while the pref above is still off.
+// The copy is reported through migrate_to_rust and then wiped.
+pref("extensions.formautofill.addresses.storage.rust.runMigrationTest", false);
+// Which generation of the dry run above this profile has done, so a build that
+// fixes a migration bug can bump it and measure the same profiles again.
+pref("extensions.formautofill.addresses.storage.rust.migrationTestVersion", 0);
+// How many launches have already tried and failed to migrate. Managed by
+// Firefox, which gives up after a budget.
+pref("extensions.formautofill.addresses.storage.rust.migrationAttempts", 0);
+
 pref("extensions.formautofill.creditCards.supported", "on");
 pref("extensions.formautofill.creditCards.enabled", true);
 pref("extensions.formautofill.creditCards.ignoreAutocompleteOff", true);

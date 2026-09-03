@@ -422,11 +422,6 @@ class SecretSettingsFragment : PreferenceFragmentCompat(), SystemInsetsPaddedFra
             onPreferenceChangeListener = SharedPreferenceUpdater()
         }
 
-        requirePreference<SwitchPreferenceCompat>(R.string.pref_key_enable_homepage_trending_recent_search).apply {
-            isChecked = settings.enableHomepageTrendingRecentSearch
-            onPreferenceChangeListener = SharedPreferenceUpdater()
-        }
-
         requirePreference<SwitchPreferenceCompat>(R.string.pref_key_persistent_debug_menu).apply {
             isVisible = true
             isChecked = settings.isDebugMenuPersistentlyRevealed
@@ -495,6 +490,12 @@ class SecretSettingsFragment : PreferenceFragmentCompat(), SystemInsetsPaddedFra
         requirePreference<SwitchPreferenceCompat>(R.string.pref_key_tab_groups_onboarding).apply {
             isVisible = Config.channel.isNightlyOrDebug
             isChecked = context.components.settings.tabGroupsOnboardingEnabled
+            onPreferenceChangeListener = SharedPreferenceUpdater()
+        }
+
+        requirePreference<SwitchPreferenceCompat>(R.string.pref_key_tab_groups_strip).apply {
+            isVisible = Config.channel.isDebug
+            isChecked = settings.tabGroupsStripEnabled
             onPreferenceChangeListener = SharedPreferenceUpdater()
         }
 

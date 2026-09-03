@@ -153,8 +153,6 @@
     <string name="preferences_debug_settings_enable_persistent_onboarding" translatable="false">Show onboarding on each app cold open</string>
     <!-- Label for enabling Homepage Customization -->
     <string name="preferences_debug_settings_homepage_customization" translatable="false">Enable Homepage Customization</string>
-    <!-- Label for enabling trending and recent searches on the Homepage Search -->
-    <string name="preferences_debug_settings_homepage_trending_recent_search" translatable="false">Enable Trending and Recent Search on Homepage</string>
 
     <!-- Search Optimization Secret Settings -->
     <string name="preferences_debug_settings_search_optimization" translatable="false">Search Optimization Feature</string>
@@ -184,6 +182,7 @@
     <string name="preferences_tab_groups_drag_and_drop" translatable="false">Enable Tab Groups Drag and Drop</string>
     <string name="preferences_tab_groups_live_reorder" translatable="false">Enable Live Reorder for Drag and Drop</string>
     <string name="preferences_tab_groups_onboarding" translatable="false">Enable Tab Groups Onboarding</string>
+    <string name="preferences_tab_groups_strip" translatable="false">Enable Tab Groups Strip</string>
 
     <!-- Label for toggling the Tab Manager opening animation -->
     <string name="preferences_tab_manager_opening_animation" translatable="false">Enable Tab Manager opening animation</string>

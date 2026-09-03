@@ -520,9 +520,16 @@ class Element : public FragmentOrElement {
   virtual bool IsInteractiveHTMLContent() const;
 
   /**
-   * Is the attribute named aAttribute a mapped attribute?
+   * Is the attribute named aAttribute in the null namespace a mapped attribute?
    */
-  NS_IMETHOD_(bool) IsAttributeMapped(const nsAtom* aAttribute) const;
+  virtual bool IsNoNamespaceAttrMapped(const nsAtom* aAttribute) const;
+  bool IsAttrMapped(int32_t aNamespaceID, const nsAtom* aAttribute) const {
+    if (aNamespaceID == kNameSpaceID_None) {
+      return IsNoNamespaceAttrMapped(aAttribute);
+    }
+    // xml:lang is always mapped.
+    return aNamespaceID == kNameSpaceID_XML && aAttribute == nsGkAtoms::lang;
+  }
 
   nsresult BindToTree(BindContext&, nsINode& aParent) override;
   void UnbindFromTree(UnbindContext&) override;
@@ -541,7 +548,7 @@ class Element : public FragmentOrElement {
   void RecomputeContainerTimingRootForSubtree();
 
   virtual nsMapRuleToAttributesFunc GetAttributeMappingFunction() const;
-  static void MapNoAttributesInto(mozilla::MappedDeclarationsBuilder&);
+  static void MapXmlLangAttrInto(mozilla::MappedDeclarationsBuilder&);
 
   /**
    * Get a hint that tells the style system what to do when
@@ -1273,7 +1280,7 @@ class Element : public FragmentOrElement {
   /**
    * A common method where you can just pass in a list of maps to check
    * for attribute dependence. Most implementations of
-   * IsAttributeMapped should use this function as a default
+   * IsNoNamespaceAttrMapped should use this function as a default
    * handler.
    */
   template <size_t N>
