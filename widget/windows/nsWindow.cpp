@@ -4094,7 +4094,7 @@ void nsWindow::DispatchPendingEvents() {
 
 void nsWindow::DispatchCustomEvent(const nsString& eventName) {
   if (Document* doc = GetDocument()) {
-    if (const nsCOMPtr<nsPIDOMWindowOuter> win = doc->GetWindow()) {
+    if (nsPIDOMWindowOuter* win = doc->GetWindow()) {
       win->DispatchCustomEvent(eventName, ChromeOnlyDispatch::eYes);
     }
   }
@@ -4696,9 +4696,7 @@ LRESULT CALLBACK nsWindow::WindowProcInternal(HWND hWnd, UINT msg,
   // Hold the window for the life of this method, in case it gets
   // destroyed during processing, unless we're in the dtor already.
   nsCOMPtr<nsIWidget> kungFuDeathGrip;
-  if (!targetWindow->mInDtor) {
-    kungFuDeathGrip = targetWindow;
-  }
+  if (!targetWindow->mInDtor) kungFuDeathGrip = targetWindow;
 
   targetWindow->IPCWindowProcHandler(msg, wParam, lParam);
 
@@ -4713,8 +4711,7 @@ LRESULT CALLBACK nsWindow::WindowProcInternal(HWND hWnd, UINT msg,
 
   // Call ProcessMessage
   LRESULT retValue;
-  if (MOZ_KnownLive(targetWindow)
-          ->ProcessMessage(msg, wParam, lParam, &retValue)) {
+  if (targetWindow->ProcessMessage(msg, wParam, lParam, &retValue)) {
     return retValue;
   }
 
