@@ -959,6 +959,22 @@ features:
       - channel: nightly
         value:
           enabled: false
+  tab-groups-ungroup:
+    description: Control whether the ungroup option is available for tab groups.
+    variables:
+      enabled:
+        description: >
+          Whether or not to enable ungrouping tab groups.
+        type: Boolean
+        default: true
+  tab-groups-strip:
+    description: Control whether the tab groups strip is shown.
+    variables:
+      enabled:
+        description: >
+          Whether or not to enable the tab groups strip.
+        type: Boolean
+        default: false
 
   marketing-onboarding-card:
     description: A temporary feature to control the marketing onboarding card shown during the onboarding flow.
@@ -1285,14 +1301,7 @@ features:
       enabled:
         description: If true, trending and recent searches are shown on the Homepage Search.
         type: Boolean
-        default: false
-    defaults:
-      - channel: nightly
-        value:
-          enabled: true
-      - channel: developer
-        value:
-          enabled: true
+        default: true
 
   collections-to-tab-groups-migration:
     description: Feature to migrate Collections to Tab Groups for users on Firefox for Android.

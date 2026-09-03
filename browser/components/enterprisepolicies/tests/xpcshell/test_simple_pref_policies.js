@@ -1372,6 +1372,7 @@ const POLICIES_TESTS = [
         SmartTabGroups: { Value: "blocked" },
         LinkPreviewKeyPoints: { Value: "available" },
         SidebarChatbot: { Value: "blocked" },
+        SpeechRecognition: { Value: "available" },
       },
     },
     lockedPrefs: {
@@ -1387,6 +1388,7 @@ const POLICIES_TESTS = [
       "browser.ai.control.sidebarChatbot": "blocked",
       "browser.ml.chat.enabled": false,
       "browser.ml.chat.page": false,
+      "browser.ai.control.speechRecognition": "available",
     },
   },
 
@@ -1409,6 +1411,7 @@ const POLICIES_TESTS = [
       "browser.ai.control.sidebarChatbot": "blocked",
       "browser.ml.chat.enabled": false,
       "browser.ml.chat.page": false,
+      "browser.ai.control.speechRecognition": "blocked",
     },
     unlockedPrefs: {
       "browser.ai.control.translations": "available",

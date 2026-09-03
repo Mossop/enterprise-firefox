@@ -5054,13 +5054,6 @@ pqcrypto:
         pref: network.http.http3.enable_kyber
       description: >-
         Whether to enable mlkem768x25519 for H3/QUIC.
-    sendP256:
-      type: boolean
-      setPref:
-        branch: default
-        pref: security.tls.client_hello.send_p256_keyshare
-      description: >-
-        Whether to send a P256 share in the client hello in QUIC and TLS.
     dtlsWebRTCEnableMlkem:
       type: boolean
       setPref:
@@ -6072,6 +6065,15 @@ smartWindowAgentWatch:
       description: >-
         Comma-separated list of region codes where the agent watch command is
         available, for example "US,CA".
+    monitorAnnouncement:
+      type: boolean
+      setPref:
+        branch: default
+        pref: browser.smartwindow.agent.monitorAnnouncement
+      description: >-
+        Announces the agent monitor feature as new with a dot on its toolbar
+        button, until the user opens the panel or the rollout ends. Independent
+        of the dot that marks a task whose condition was met.
 
 contentSharing:
   description: Controls the content sharing feature, which allows users to share browser content.

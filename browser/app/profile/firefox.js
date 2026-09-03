@@ -1179,12 +1179,6 @@ pref("browser.tabs.delayHidingAudioPlayingIconMS", 3000);
 // types of privleged content processes, each with different privleges.
 pref("browser.tabs.remote.separatePrivilegedContentProcess", true);
 
-#if defined(NIGHTLY_BUILD) && !defined(MOZ_ASAN)
-  // This pref will cause assertions when a remoteType triggers a process switch
-  // to a new remoteType it should not be able to trigger.
-  pref("browser.tabs.remote.enforceRemoteTypeRestrictions", true);
-#endif
-
 // Pref to control whether we use a separate privileged content process
 // for certain mozilla webpages (which are listed in the pref
 // browser.tabs.remote.separatedMozillaDomains).
@@ -2496,6 +2490,11 @@ pref("browser.smartwindow.agent.enabled", true);
 pref("browser.smartwindow.agent.supportedRegions", "US,CA");
 // Toolbar button that opens the monitor creation panel (bug 2062113).
 pref("browser.smartwindow.agent.toolbar.enabled", false);
+// Announces the monitor agent as a new feature with a dot on the toolbar
+// button, for as long as the rollout runs. Set on the default branch by Nimbus
+// so that dismissing it, which writes the user branch, survives the rollout
+// being re-applied (bug 2066576).
+pref("browser.smartwindow.agent.monitorAnnouncement", false);
 
 
 // Smart Window: Exa search endpoint, used by the search_the_web agentic flow (bug 2037948)
@@ -3198,10 +3197,8 @@ pref("toolkit.coverage.endpoint.base", "");
 pref("toolkit.coverage.endpoint.base", "https://coverage.mozilla.org");
 #endif
 
-// Discovery prefs
+// Enable personalized extension recommendations
 pref("browser.discovery.enabled", true);
-pref("browser.discovery.containers.enabled", true);
-pref("browser.discovery.sites", "addons.mozilla.org");
 
 pref("browser.engagement.recent_visited_origins.expiry", 86400); // 24 * 60 * 60 (24 hours in seconds)
 pref("browser.engagement.downloads-button.has-used", false);
