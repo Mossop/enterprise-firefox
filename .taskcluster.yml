@@ -732,7 +732,7 @@ tasks:
                           'baseRef == "enterprise-release" || baseRef == "refs/heads/enterprise-release"': "refs/heads/release"
                           'project == "enterprise-firefox-try"': "refs/heads/main"
                           $default: "master"
-                  commBaseRev: b620aa1349303d9554b1214ee1dcbfb7783885c3
+                  commBaseRev: f1d9513a4e32d4f7d8cc7165edef970d294470db
                   commHeadRepoUrl: https://github.com/thunderbird/thunderbird-desktop
                   commHeadRef:
                       $switch:
@@ -741,7 +741,7 @@ tasks:
                           'baseRef == "enterprise-release" || baseRef == "refs/heads/enterprise-release"': "refs/heads/release"
                           'project == "enterprise-firefox-try"': "refs/heads/main"
                           $default: "master"
-                  commHeadRev: b620aa1349303d9554b1214ee1dcbfb7783885c3
+                  commHeadRev: f1d9513a4e32d4f7d8cc7165edef970d294470db
                   shortRef:
                       $if: 'ref[:11] == "refs/heads/"'
                       then: {$eval: 'ref[11:]'}
