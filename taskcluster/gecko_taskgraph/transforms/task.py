@@ -2762,6 +2762,27 @@ def update_treeherder_platform_comm(config, tasks):
 
 
 @transforms.add
+def update_tasks_env_comm(config, tasks):
+    """
+    Make sure that when running as Comm Decision for Thunderbird Enterprise,
+    correct COMM_* environment variables are set. Chain of Trust verification
+    will depend on it.
+    """
+    for task in tasks:
+        if (
+            "enterprise" in config.params["project"]
+            and "comm_base_repository" in config.params
+            and "env" in task["task"]["payload"]
+        ):
+            task["task"]["payload"]["env"].update({
+                "COMM_BASE_REPOSITORY": config.params["comm_base_repository"],
+                "COMM_HEAD_REPOSITORY": config.params["comm_head_repository"],
+                "COMM_HEAD_REV": config.params["comm_head_rev"],
+            })
+        yield task
+
+
+@transforms.add
 def chain_of_trust(config, tasks):
     for task in tasks:
         if task["task"].get("payload", {}).get("features", {}).get("chainOfTrust"):
