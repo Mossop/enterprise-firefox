@@ -407,15 +407,6 @@ using mozilla::dom::quota::QuotaManager;
 using mozilla::intl::LocaleService;
 using mozilla::scache::StartupCache;
 
-struct AppRunnerTelemFlags {
-  uint8_t isBackgroundTaskModeRequested : 1;
-  uint8_t isBackgroundTaskMode : 1;
-  uint8_t hasRestartPidParameter : 1;
-  uint8_t isRestartPidNotInteger : 1;
-  uint8_t isRestartPidWaitTimeout : 1;
-  uint8_t isRestartPidFailure : 1;
-};
-
 #ifndef XP_WIN
 // Save the given word to the specified environment variable.
 static void MOZ_NEVER_INLINE SaveWordToEnv(const char* name,
@@ -3662,8 +3653,7 @@ struct FileWriteFunc final : public JSONWriteFunc {
 };
 
 static void SubmitDowngradeTelemetry(const nsCString& aLastVersion,
-                                     bool aHasSync, int32_t aButton,
-                                     AppRunnerTelemFlags appRunnerTelemFlags) {
+                                     bool aHasSync, int32_t aButton) {
   nsCOMPtr<nsIPrefService> prefSvc =
       do_GetService("@mozilla.org/preferences-service;1");
   NS_ENSURE_TRUE_VOID(prefSvc);
@@ -3815,18 +3805,6 @@ static void SubmitDowngradeTelemetry(const nsCString& aLastVersion,
       w.BoolProperty("hasSync", aHasSync);
       w.IntProperty("button", aButton);
       w.BoolProperty("isMSIX", isMSIX);
-      w.BoolProperty("isBackgroundTaskModeRequested",
-                     appRunnerTelemFlags.isBackgroundTaskModeRequested);
-      w.BoolProperty("isBackgroundTaskMode",
-                     appRunnerTelemFlags.isBackgroundTaskMode);
-      w.BoolProperty("hasRestartPidParameter",
-                     appRunnerTelemFlags.hasRestartPidParameter);
-      w.BoolProperty("isRestartPidNotInteger",
-                     appRunnerTelemFlags.isRestartPidNotInteger);
-      w.BoolProperty("isRestartPidWaitTimeout",
-                     appRunnerTelemFlags.isRestartPidWaitTimeout);
-      w.BoolProperty("isRestartPidFailure",
-                     appRunnerTelemFlags.isRestartPidFailure);
     }
     w.EndObject();
   }
@@ -3863,8 +3841,7 @@ static const char kProfileDowngradeURL[] =
 
 static ReturnAbortOnError HandleDetectedDowngrade(
     nsIFile* aProfileDir, nsINativeAppSupport* aNative,
-    nsIToolkitProfileService* aProfileSvc, const nsCString& aLastVersion,
-    AppRunnerTelemFlags appRunnerTelemFlags) {
+    nsIToolkitProfileService* aProfileSvc, const nsCString& aLastVersion) {
   int32_t result = 0;
   nsresult rv;
 
@@ -3943,8 +3920,7 @@ static ReturnAbortOnError HandleDetectedDowngrade(
 
       paramBlock->GetInt(1, &result);
 
-      SubmitDowngradeTelemetry(aLastVersion, hasSync, result,
-                               appRunnerTelemFlags);
+      SubmitDowngradeTelemetry(aLastVersion, hasSync, result);
     }
   }
 
@@ -4452,9 +4428,8 @@ class XREMain {
   }
 
   int XRE_main(int argc, char* argv[], const BootstrapConfig& aConfig);
-  int XRE_mainInit(bool* aExitFlag, AppRunnerTelemFlags& appRunnerTelemFlags);
-  int XRE_mainStartup(bool* aExitFlag,
-                      AppRunnerTelemFlags& appRunnerTelemFlags);
+  int XRE_mainInit(bool* aExitFlag);
+  int XRE_mainStartup(bool* aExitFlag);
   MOZ_CAN_RUN_SCRIPT_BOUNDARY nsresult XRE_mainRun();
 
   bool CheckLastStartupWasCrash();
@@ -4658,8 +4633,7 @@ static void SetupConsoleForBackgroundTask(
  * Main() will exit early if either return value != 0 or if aExitFlag is
  * true.
  */
-int XREMain::XRE_mainInit(bool* aExitFlag,
-                          AppRunnerTelemFlags& appRunnerTelemFlags) {
+int XREMain::XRE_mainInit(bool* aExitFlag) {
   if (!aExitFlag) return 1;
   *aExitFlag = false;
 
@@ -4704,7 +4678,6 @@ int XREMain::XRE_mainInit(bool* aExitFlag,
   if (ARG_FOUND ==
       CheckArg("backgroundtask", &backgroundTaskName, CheckArgFlag::None)) {
     backgroundTask = Some(backgroundTaskName);
-    appRunnerTelemFlags.isBackgroundTaskModeRequested = 1;
     SetupConsoleForBackgroundTask(backgroundTask.ref());
   }
 
@@ -5468,8 +5441,7 @@ bool XREMain::CheckLastStartupWasCrash() {
  * Main() will exit early if either return value != 0 or if aExitFlag is
  * true.
  */
-int XREMain::XRE_mainStartup(bool* aExitFlag,
-                             AppRunnerTelemFlags& appRunnerTelemFlags) {
+int XREMain::XRE_mainStartup(bool* aExitFlag) {
   nsresult rv;
 
   if (!aExitFlag) return 1;
@@ -5598,9 +5570,6 @@ int XREMain::XRE_mainStartup(bool* aExitFlag,
   bool isBackgroundTaskMode = false;
 #ifdef MOZ_BACKGROUNDTASKS
   isBackgroundTaskMode = BackgroundTasks::IsBackgroundTaskMode();
-  if (isBackgroundTaskMode) {
-    appRunnerTelemFlags.isBackgroundTaskMode = 1;
-  }
 #endif
 
 #ifdef MOZ_HAS_REMOTE
@@ -5908,7 +5877,6 @@ int XREMain::XRE_mainStartup(bool* aExitFlag,
     // Ensure we keep -restart-pid if we are running tests
     if (ARG_FOUND == CheckArgExists("restart-pid") &&
         !CheckArg("test-only-automatic-restart-no-wait")) {
-      appRunnerTelemFlags.hasRestartPidParameter = 1;
       // We're not testing and can safely remove it now and read the pid.
       const char* restartPidString = nullptr;
       CheckArg("restart-pid", &restartPidString, CheckArgFlag::RemoveArg);
@@ -5921,16 +5889,9 @@ int XREMain::XRE_mainStartup(bool* aExitFlag,
         rv = updater->WaitForProcessExit(pid, MAYBE_WAIT_TIMEOUT_MS);
         if (NS_FAILED(rv)) {
           NS_WARNING("Failure in nsUpdateProcessor::WaitForProcessExit.");
-          // Is this a timeout?
-          if (rv == NS_ERROR_ABORT) {
-            appRunnerTelemFlags.isRestartPidWaitTimeout = 1;
-          } else {
-            appRunnerTelemFlags.isRestartPidFailure = 1;
-          }
         }
       } else {
         NS_WARNING("Failed to parse pid from -restart-pid.");
-        appRunnerTelemFlags.isRestartPidNotInteger = 1;
       }
     }
   }
@@ -6230,8 +6191,7 @@ int XREMain::XRE_mainStartup(bool* aExitFlag,
 #  ifdef XP_MACOSX
     InitializeMacApp();
 #  endif
-    rv = HandleDetectedDowngrade(mProfD, mNativeApp, mProfileSvc, lastVersion,
-                                 appRunnerTelemFlags);
+    rv = HandleDetectedDowngrade(mProfD, mNativeApp, mProfileSvc, lastVersion);
     if (rv == NS_ERROR_LAUNCHED_CHILD_PROCESS || rv == NS_ERROR_ABORT) {
       *aExitFlag = true;
       return 0;
@@ -6991,8 +6951,6 @@ static already_AddRefed<nsIFile> GreOmniPath(int argc, char** argv) {
 int XREMain::XRE_main(int argc, char* argv[], const BootstrapConfig& aConfig) {
   gArgc = argc;
   gArgv = argv;
-  AppRunnerTelemFlags appRunnerTelemFlags{};
-
   ScopedLogging log;
 
   mozilla::LogModule::Init(gArgc, gArgv);
@@ -7224,7 +7182,7 @@ int XREMain::XRE_main(int argc, char* argv[], const BootstrapConfig& aConfig) {
 
   // init
   bool exit = false;
-  int result = XRE_mainInit(&exit, appRunnerTelemFlags);
+  int result = XRE_mainInit(&exit);
   if (result != 0 || exit) return result;
 
   // If we exit gracefully, remove the startup crash canary file.
@@ -7237,7 +7195,7 @@ int XREMain::XRE_main(int argc, char* argv[], const BootstrapConfig& aConfig) {
   });
 
   // startup
-  result = XRE_mainStartup(&exit, appRunnerTelemFlags);
+  result = XRE_mainStartup(&exit);
   if (result != 0 || exit) return result;
 
   // Start the real application. We use |aInitJSContext = false| because

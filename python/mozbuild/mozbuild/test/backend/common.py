@@ -283,6 +283,19 @@ CONFIGS = defaultdict(
                 "OBJ_SUFFIX": "o",
             },
         },
+        "l10n-manifest-roots": {
+            "defines": {},
+            "substs": {
+                "OS_TARGET": "WINNT",
+                "MOZ_L10N_CHROME_ROOTS": ["app/locales"],
+            },
+        },
+        "l10n-manifest-roots-unfiltered": {
+            "defines": {},
+            "substs": {
+                "OS_TARGET": "WINNT",
+            },
+        },
     },
 )
 
@@ -329,7 +342,12 @@ class BackendTester(unittest.TestCase):
     def _consume(self, name, cls, env=None):
         env, objs = self._emit(name, env=env)
         backend = cls(env)
-        backend.consume(objs)
+        try:
+            backend.consume(objs)
+        except Exception:
+            for backend_file in getattr(backend, "_backend_files", {}).values():
+                backend_file.fh.avoid_writing_to_file()
+            raise
 
         return env
 

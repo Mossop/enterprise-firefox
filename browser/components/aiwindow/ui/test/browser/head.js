@@ -55,6 +55,10 @@ const {
   "moz-src:///browser/components/aiwindow/models/ConversationSuggestions.sys.mjs"
 );
 
+const { _clearDismissedResumeMemoriesForTesting } = ChromeUtils.importESModule(
+  "moz-src:///browser/components/aiwindow/ui/modules/ResumeActivityDismissals.sys.mjs"
+);
+
 /**
  * @import { SmartbarAction } from "chrome://browser/content/aiwindow/components/input-cta/input-cta.mjs"
  */
@@ -480,6 +484,21 @@ async function getPromptButtons(browser) {
   return promptsEl.shadowRoot.querySelectorAll(".sw-prompt-button");
 }
 
+async function getDismissButton(browser) {
+  const aiWindow = await TestUtils.waitForCondition(
+    () => browser.contentDocument?.querySelector("ai-window"),
+    "Wait for ai-window element"
+  );
+  const promptsEl = await TestUtils.waitForCondition(
+    () => aiWindow.shadowRoot.querySelector("smartwindow-prompts"),
+    "Wait for smartwindow-prompts element"
+  );
+  return TestUtils.waitForCondition(
+    () => promptsEl.shadowRoot.querySelector(".sw-prompt-dismiss"),
+    "Wait for the resume pill's dismiss button"
+  );
+}
+
 async function getConversationId(browser) {
   const aiWindow = await TestUtils.waitForCondition(
     () => browser.contentDocument?.querySelector("ai-window"),
@@ -488,11 +507,21 @@ async function getConversationId(browser) {
   return aiWindow.conversationId.toString();
 }
 
-async function stubResumeActivityGeneration(sb) {
-  const urls = [1, 2, 3, 4, 5].map(id => ({
-    url: `https://example.com/${id}`,
-    title: `Example ${id}`,
-  }));
+/**
+ * Stubs resume generation for the supplied memories, cards, and URLs.
+ *
+ * @param {object} sb - Sinon sandbox, owned and restored by the caller
+ * @param {object} options
+ * @param {Array<object>} options.memories
+ * @param {Array<object>} options.cards - Mocked headline-generation output
+ * @param {Array<{url: string, title: string}>} options.urls - Inserted into
+ *   Places and removed again on cleanup
+ * @param {?string} [options.fxAccountToken]
+ */
+async function _stubResumeActivityGenerationCore(
+  sb,
+  { memories, cards, urls, fxAccountToken = null }
+) {
   for (const [index, page] of urls.entries()) {
     await PlacesUtils.history.insert({
       ...page,
@@ -505,6 +534,65 @@ async function stubResumeActivityGeneration(sb) {
     });
   }
 
+  const getMemoriesStub = sb
+    .stub(MemoriesManager, "getMemoriesByAttribute")
+    .resolves(memories);
+  // Keep cached results from being filtered as deleted.
+  sb.stub(MemoriesManager, "getAllMemories").resolves(memories);
+  // Prevent cached results and dismissals from leaking between tests.
+  _clearResumeActivityCacheForTesting();
+  _clearDismissedResumeMemoriesForTesting();
+  _setGetConversationsByIdForTesting(async () => []);
+  _setConversationSuggestionsLoadPromptForTesting(async () => ({
+    prompt: "Test prompt",
+  }));
+  _setBuildConversationForTesting(async () => ({
+    setSystemMessage() {},
+    addUserMessage() {},
+    securityProperties: {
+      setPrivateData() {},
+      setUntrustedInput() {},
+      commit() {},
+    },
+    run: sb.stub().resolves({ finalOutput: JSON.stringify(cards) }),
+  }));
+  sb.stub(openAIEngine, "getFxAccountToken").resolves(fxAccountToken);
+
+  const originalAvailableLocales = Services.locale.availableLocales;
+  const originalRequestedLocales = Services.locale.requestedLocales;
+  Services.locale.availableLocales = ["en-US"];
+  Services.locale.requestedLocales = ["en-US"];
+
+  return {
+    getMemoriesStub,
+    memories,
+    async cleanup() {
+      _setGetConversationsByIdForTesting(null);
+      _setConversationSuggestionsLoadPromptForTesting(null);
+      _setBuildConversationForTesting(null);
+      _clearResumeActivityCacheForTesting();
+      _clearDismissedResumeMemoriesForTesting();
+      for (const { url } of urls) {
+        await PlacesUtils.history.remove(url);
+      }
+      Services.locale.availableLocales = originalAvailableLocales;
+      Services.locale.requestedLocales = originalRequestedLocales;
+    },
+  };
+}
+
+/**
+ * Stubs two candidates with one valid resume pill.
+ *
+ * @param {object} sb - Sinon sandbox, owned and restored by the caller
+ * @param {object} [options]
+ * @param {?string} [options.fxAccountToken]
+ */
+async function stubResumeActivityGeneration(sb, { fxAccountToken } = {}) {
+  const urls = [1, 2, 3, 4, 5].map(id => ({
+    url: `https://example.com/${id}`,
+    title: `Example ${id}`,
+  }));
   const memories = [
     {
       id: "memory-1",
@@ -523,58 +611,41 @@ async function stubResumeActivityGeneration(sb) {
       },
     },
   ];
-
-  const getMemoriesStub = sb
-    .stub(MemoriesManager, "getMemoriesByAttribute")
-    .resolves(memories);
-  // Keep cached results from being filtered as deleted.
-  sb.stub(MemoriesManager, "getAllMemories").resolves(memories);
-  // Prevent cached results from leaking between tests.
-  _clearResumeActivityCacheForTesting();
-  _setGetConversationsByIdForTesting(async () => []);
-  _setConversationSuggestionsLoadPromptForTesting(async () => ({
-    prompt: "Test prompt",
-  }));
-  _setBuildConversationForTesting(async () => ({
-    setSystemMessage() {},
-    addUserMessage() {},
-    securityProperties: {
-      setPrivateData() {},
-      setUntrustedInput() {},
-      commit() {},
-    },
-    run: sb.stub().resolves({
-      finalOutput: JSON.stringify([
-        {
-          id: 0,
-          headline: "Pick up your research",
-          status: "Continue reading",
-        },
-      ]),
-    }),
-  }));
-  sb.stub(openAIEngine, "getFxAccountToken").resolves(null);
-
-  const originalAvailableLocales = Services.locale.availableLocales;
-  const originalRequestedLocales = Services.locale.requestedLocales;
-  Services.locale.availableLocales = ["en-US"];
-  Services.locale.requestedLocales = ["en-US"];
-
-  return {
-    getMemoriesStub,
+  const cards = [
+    { id: 0, headline: "Pick up your research", status: "Continue reading" },
+  ];
+  return _stubResumeActivityGenerationCore(sb, {
     memories,
-    async cleanup() {
-      _setGetConversationsByIdForTesting(null);
-      _setConversationSuggestionsLoadPromptForTesting(null);
-      _setBuildConversationForTesting(null);
-      _clearResumeActivityCacheForTesting();
-      for (const { url } of urls) {
-        await PlacesUtils.history.remove(url);
-      }
-      Services.locale.availableLocales = originalAvailableLocales;
-      Services.locale.requestedLocales = originalRequestedLocales;
+    cards,
+    urls,
+    fxAccountToken,
+  });
+}
+
+/**
+ * Stubs `memoryCount` ranked candidates with valid headlines.
+ *
+ * @param {object} sb - Sinon sandbox, owned and restored by the caller
+ * @param {number} memoryCount
+ */
+async function stubResumeActivityGenerationPool(sb, memoryCount) {
+  const urls = Array.from({ length: memoryCount }, (_, i) => ({
+    url: `https://example.com/pool-${i}`,
+    title: `Example ${i}`,
+  }));
+  const memories = urls.map((page, i) => ({
+    id: `pool-memory-${i}`,
+    memory_summary: `Research topic ${i}`,
+    source_ids: {
+      history_source_ids: [PlacesUtils.history.hashURL(page.url)],
     },
-  };
+  }));
+  const cards = memories.map((memory, i) => ({
+    id: i,
+    headline: `Pick up ${memory.memory_summary}`,
+    status: "Continue",
+  }));
+  return _stubResumeActivityGenerationCore(sb, { memories, cards, urls });
 }
 
 /**
@@ -990,7 +1061,7 @@ async function waitForSmartbarAction(browser, expectedAction) {
 
 /**
  * Stub the smartbar's load path to prevent navigation. The load funnels through
- * the private #loadURL into controller.loadURL, so the controller is the seam.
+ * the private #loadURL into the parent controller's loadURL, which is the seam.
  *
  * @param {MozBrowser} browser - The browser element
  * @param {object} [options] - Options for the stub
@@ -1008,13 +1079,13 @@ async function stubLoadURL(browser, { captureURL = false } = {}) {
     if (capture) {
       content._stubLoadURLCalled = false;
       content._stubLoadedURL = null;
-      smartbar.controller.loadURL = ({ loadRequest }) => {
+      smartbar.parentController.loadURL = ({ loadRequest }) => {
         content._stubLoadURLCalled = true;
         content._stubLoadedURL = loadRequest.urlLoad?.url ?? null;
         return {};
       };
     } else {
-      smartbar.controller.loadURL = () => ({});
+      smartbar.parentController.loadURL = () => ({});
     }
   });
 }
@@ -1049,7 +1120,7 @@ async function stubOpenSERP(browser) {
     content._stubOpenSERPCalled = false;
     content._stubOpenSERPTerms = null;
     content._stubOpenSERPEngine = null;
-    smartbar.controller.openSERP = (engineId, searchTerms) => {
+    smartbar.parentController.openSERP = (engineId, searchTerms) => {
       content._stubOpenSERPCalled = true;
       content._stubOpenSERPTerms = searchTerms;
       content._stubOpenSERPEngine = engineId;
