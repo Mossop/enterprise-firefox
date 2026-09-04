@@ -25,6 +25,7 @@ ChromeUtils.defineLazyGetter(lazy, "log", () => {
 const PROMPT_ON_SIGNOUT_PREF = "enterprise.prompt_on_signout";
 const WARN_ON_CLOSE_PREF = "browser.tabs.warnOnClose";
 const LOCK_ON_SHUTDOWN_PREF = "enterprise.locking.shutdown";
+const LOCK_ON_RESTART_PREF = "enterprise.locking.restart";
 
 export const EnterpriseHandler = {
   /**
@@ -102,12 +103,10 @@ export const EnterpriseHandler = {
   _initLockingPrefObservers() {
     if (Services.felt?.isFeltBrowser() && !this._lockObserversInitialized) {
       this._lockObserversInitialized = true;
-      this._syncShutdownLockIntent();
-      this._shutdownLockPrefObserver = () => this._syncShutdownLockIntent();
-      Services.prefs.addObserver(
-        LOCK_ON_SHUTDOWN_PREF,
-        this._shutdownLockPrefObserver
-      );
+      this._syncLockIntents();
+      this._lockPrefObserver = () => this._syncLockIntents();
+      Services.prefs.addObserver(LOCK_ON_SHUTDOWN_PREF, this._lockPrefObserver);
+      Services.prefs.addObserver(LOCK_ON_RESTART_PREF, this._lockPrefObserver);
     }
   },
 
@@ -373,16 +372,32 @@ export const EnterpriseHandler = {
   },
 
   /**
-   * Push the current shutdown-locking preference to the browser's FELT IPC
-   * client, which attaches it to the exit event when a shutdown is observed.
-   * The value is cached there rather than read at shutdown time so the intent
-   * always travels with the exit itself (a vetoed quit sends nothing).
+   * Whether a restart that applies a pending update will lock the session
+   * (persist it behind OS auth to resume after the update) rather than sign
+   * out, per the locking pref.
+   *
+   * @returns {boolean}
    */
-  _syncShutdownLockIntent() {
+  get willLockOnRestart() {
+    return Services.prefs.getBoolPref(LOCK_ON_RESTART_PREF, false);
+  },
+
+  /**
+   * Push the current locking preferences to the browser's FELT IPC client,
+   * which attaches them to the exit or restart event when one is observed.
+   * The values are cached there rather than read at quit time so the intent
+   * always travels with the quit itself (a vetoed quit sends nothing).
+   */
+  _syncLockIntents() {
     try {
       Services.felt.setShutdownLockIntent(this.willLockOnShutdown);
     } catch (e) {
       lazy.log.error(`Unable to sync shutdown lock intent: ${e}`);
+    }
+    try {
+      Services.felt.setRestartLockIntent(this.willLockOnRestart);
+    } catch (e) {
+      lazy.log.error(`Unable to sync restart lock intent: ${e}`);
     }
   },
 
@@ -407,9 +422,13 @@ export const EnterpriseHandler = {
       this._lockObserversInitialized = false;
       Services.prefs.removeObserver(
         LOCK_ON_SHUTDOWN_PREF,
-        this._shutdownLockPrefObserver
+        this._lockPrefObserver
       );
-      this._shutdownLockPrefObserver = null;
+      Services.prefs.removeObserver(
+        LOCK_ON_RESTART_PREF,
+        this._lockPrefObserver
+      );
+      this._lockPrefObserver = null;
     }
   },
 };
