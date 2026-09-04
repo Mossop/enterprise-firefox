@@ -21,6 +21,7 @@ from pathlib import Path
 from typing import Callable, Iterator, Optional
 
 import mozpack.path as mozpath
+from mach.filelock import FileLock, Timeout
 from mozpack.chrome.manifest import parse_manifest_line
 
 from mozbuild.frontend.l10n_manifest import (
@@ -35,6 +36,31 @@ from mozbuild.frontend.l10n_manifest import (
 )
 from mozbuild.preprocessor import Preprocessor
 from mozbuild.util import FileAvoidWrite
+
+
+class MissingJarSource(Exception):
+    def __init__(
+        self,
+        locale: str,
+        context_relsrcdir: str,
+        relsrcdir: str,
+        source: str,
+        is_locale: bool,
+        resolved: str,
+    ) -> None:
+        self.locale = locale
+        self.context_relsrcdir = context_relsrcdir
+        self.relsrcdir = relsrcdir
+        self.source = source
+        self.is_locale = is_locale
+        self.resolved = resolved
+        origin = "merge tree" if is_locale else "source tree"
+        super().__init__(
+            f"No {origin} source for locale {locale}: {resolved}\n"
+            f"  manifest context: {context_relsrcdir}\n"
+            f"  jar.mn relativesrcdir: {relsrcdir or '(none)'}\n"
+            f"  jar.mn source: {source}"
+        )
 
 
 def stage_locale(
@@ -311,23 +337,39 @@ def _copy_to(src: str, dest: str) -> None:
 
 
 def _write_chrome_manifests(state: StageState) -> None:
-    """Write all collected chrome.manifest files. Each file's entries are
-    deduplicated while preserving insertion order. If a manifest file
-    already exists on disk, its lines merge ahead of the new entries so
-    chrome-mode multi-locale runs accumulate per-locale entries on top
-    of the en-US baseline (and on top of any earlier locales' entries)
-    instead of clobbering them.
+    """Write all collected manifest files. Entries are deduplicated and
+    sorted, so a file's content does not depend on the order locales are
+    staged in. If a manifest file already exists on disk, its lines merge
+    with the new entries so chrome-mode multi-locale runs accumulate
+    per-locale entries on top of the en-US baseline (and on top of any
+    earlier locales' entries) instead of clobbering them. Locales stage
+    concurrently into the same destination, so the read, merge and write
+    runs under one lock, held on a file beside the destination rather than
+    inside it.
     """
-    for relpath, entries in state.manifest_entries.items():
-        path = state.dest / relpath
-        existing = []
-        if path.exists():
-            with path.open(encoding="utf-8") as f:
-                existing = [line.rstrip("\r\n") for line in f if line.strip()]
-        ordered = list(dict.fromkeys(existing + entries))
-        path.parent.mkdir(parents=True, exist_ok=True)
-        with path.open("w", encoding="utf-8", newline="\n") as f:
-            f.write("\n".join(ordered) + "\n")
+    if not state.manifest_entries:
+        return
+
+    lock_path = state.dest.parent / f"{state.dest.name}.l10n-stage.lock"
+    lock_path.parent.mkdir(parents=True, exist_ok=True)
+    timeout = 60
+    try:
+        with FileLock(lock_path, timeout=timeout):
+            for relpath, entries in state.manifest_entries.items():
+                path = state.dest / relpath
+                path.parent.mkdir(parents=True, exist_ok=True)
+                existing = []
+                if path.exists():
+                    with path.open(encoding="utf-8") as f:
+                        existing = [line.rstrip("\r\n") for line in f if line.strip()]
+                ordered = sorted(set(existing + entries))
+                with path.open("w", encoding="utf-8", newline="\n") as f:
+                    f.write("\n".join(ordered) + "\n")
+    except Timeout as exc:
+        raise RuntimeError(
+            f"Could not acquire {lock_path} after {timeout} seconds. Another "
+            "locale is staging into the same destination."
+        ) from exc
 
 
 def _stage_jar_section(
@@ -380,6 +422,15 @@ def _stage_jar_section(
                 _stage_entry(match_src, dest_path, entry.preprocess, defines)
             continue
         src = _resolve_jar_source(state, src_relsrcdir, entry_source, entry.is_locale)
+        if not Path(src).is_file():
+            raise MissingJarSource(
+                locale=state.locale,
+                context_relsrcdir=context.relsrcdir,
+                relsrcdir=src_relsrcdir,
+                source=entry_source,
+                is_locale=entry.is_locale,
+                resolved=src,
+            )
         dest_rel = mozpath.join(install_target, section_name, entry_output)
         dest_path = mozpath.join(state.dest, dest_rel)
         _stage_entry(src, dest_path, entry.preprocess, defines)

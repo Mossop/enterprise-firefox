@@ -4541,15 +4541,13 @@ version = "0.1.0"
 dependencies = [
  "base64 0.21.999",
  "kvstore",
- "nserror",
+ "mozbuild",
  "nss-rs",
- "nsstring",
  "rusqlite 0.31.999",
  "serde",
  "serde_json",
  "tempfile",
  "thiserror 1.999.999",
- "xpcom",
  "zeroize",
 ]
 
@@ -4917,7 +4915,7 @@ dependencies = [
 [[package]]
 name = "minidump-writer"
 version = "0.12.0"
-source = "git+https://github.com/rust-minidump/minidump-writer.git?rev=45f5459790d264098346343f0ad58d008c386fa5#45f5459790d264098346343f0ad58d008c386fa5"
+source = "git+https://github.com/rust-minidump/minidump-writer.git?rev=ee5b9d59d85bea1d4c6845f6b854e04fe204adf2#ee5b9d59d85bea1d4c6845f6b854e04fe204adf2"
 dependencies = [
  "bitflags 2.10.0",
  "byteorder",
@@ -6550,7 +6548,7 @@ dependencies = [
 [[package]]
 name = "process-backend"
 version = "0.0.0"
-source = "git+https://github.com/rust-minidump/minidump-writer.git?rev=45f5459790d264098346343f0ad58d008c386fa5#45f5459790d264098346343f0ad58d008c386fa5"
+source = "git+https://github.com/rust-minidump/minidump-writer.git?rev=ee5b9d59d85bea1d4c6845f6b854e04fe204adf2#ee5b9d59d85bea1d4c6845f6b854e04fe204adf2"
 dependencies = [
  "libc",
  "log",
@@ -6562,7 +6560,7 @@ dependencies = [
 [[package]]
 name = "process-reader"
 version = "0.0.0"
-source = "git+https://github.com/rust-minidump/minidump-writer.git?rev=45f5459790d264098346343f0ad58d008c386fa5#45f5459790d264098346343f0ad58d008c386fa5"
+source = "git+https://github.com/rust-minidump/minidump-writer.git?rev=ee5b9d59d85bea1d4c6845f6b854e04fe204adf2#ee5b9d59d85bea1d4c6845f6b854e04fe204adf2"
 dependencies = [
  "libc",
  "serde",
@@ -6710,6 +6708,13 @@ dependencies = [
  "url",
  "viaduct",
  "viaduct-dev",
+]
+
+[[package]]
+name = "pushnotificationhelper"
+version = "0.1.0"
+dependencies = [
+ "mozilla-central-workspace-hack",
 ]
 
 [[package]]

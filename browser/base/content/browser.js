@@ -111,6 +111,7 @@ ChromeUtils.defineESModuleGetters(this, {
     "moz-src:///browser/components/customizableui/ToolbarDropHandler.sys.mjs",
   ToolbarIconColor: "moz-src:///browser/themes/ToolbarIconColor.sys.mjs",
   TranslationsParent: "resource://gre/actors/TranslationsParent.sys.mjs",
+  UIDensityTelemetry: "moz-src:///browser/modules/UIDensityTelemetry.sys.mjs",
   UITour: "moz-src:///browser/components/uitour/UITour.sys.mjs",
   UpdateUtils: "resource://gre/modules/UpdateUtils.sys.mjs",
   URILoadingHelper: "resource:///modules/URILoadingHelper.sys.mjs",
@@ -3209,6 +3210,7 @@ var gUIDensity = {
 
   init() {
     this.update();
+    UIDensityTelemetry.init(window);
     Services.obs.addObserver(this, "tablet-mode-change");
     Services.prefs.addObserver(this.uiDensityPref, this);
     Services.prefs.addObserver(this.autoTouchModePref, this);
@@ -3444,6 +3446,9 @@ var gUIDensity = {
     if (mode == this._appliedMode) {
       return;
     }
+    // The first call applies the density the window opened with, which isn't
+    // a change worth reporting to telemetry.
+    let isInitialUpdate = this._appliedMode === undefined;
     this._appliedMode = mode;
 
     if (sidebarContentDoc) {
@@ -3457,6 +3462,10 @@ var gUIDensity = {
     }
 
     window.dispatchEvent(new CustomEvent("uidensitychanged"));
+
+    if (!isInitialUpdate) {
+      UIDensityTelemetry.onDensityChanged(window);
+    }
   },
 };
 

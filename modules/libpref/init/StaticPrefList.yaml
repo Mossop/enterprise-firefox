@@ -2382,11 +2382,7 @@
 # back from the in-process clipboard cache is unaffected).
 - name: clipboard.readCustomFormatsFromClipboard.enabled
   type: RelaxedAtomicBool
-#if defined(ANDROID)
-  value: false
-#else
   value: @IS_NIGHTLY_BUILD@
-#endif
   mirror: always
 
 #---------------------------------------------------------------------------
@@ -2722,11 +2718,7 @@
 # Master gate for the web custom format support in the Async Clipboard API.
 - name: dom.clipboard.customFormatSupport.enabled
   type: RelaxedAtomicBool
-#if defined(ANDROID)
-  value: false
-#else
   value: @IS_NIGHTLY_BUILD@
-#endif
   mirror: always
 
 # HTML specification says the level should be 5
@@ -12246,6 +12238,16 @@
 - name: media.mediacapabilities.from-database
   type: RelaxedAtomicBool
   value: @IS_NIGHTLY_BUILD@
+  mirror: always
+
+# When true, MediaCapabilities answers non-WebRTC decoding support queries from
+# the cached codec-support snapshot (PDMFactorySupport), waiting asynchronously
+# for remote processes to report their support. When false, it falls back to
+# the original behaviour of creating a decoder and querying it (video) or a
+# synchronous PDMFactorySupport query (audio).
+- name: media.mediacapabilities.codec-support-cache.enabled
+  type: RelaxedAtomicBool
+  value: false
   mirror: always
 
 # Enable WebRTC type support in Media Capabilities API.
