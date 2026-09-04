@@ -47,11 +47,13 @@ ChromeUtils.defineESModuleGetters(lazy, {
   blockAboutPage: "resource://gre/modules/PoliciesHelpers.sys.mjs",
   clearBlockedAboutPages: "resource://gre/modules/PoliciesHelpers.sys.mjs",
   clearRunOnceModification: "resource://gre/modules/PoliciesHelpers.sys.mjs",
+  describePreferenceFailure: "resource://gre/modules/PoliciesHelpers.sys.mjs",
   installAddonFromURL: "resource://gre/modules/PoliciesHelpers.sys.mjs",
   installAddonFromRepository: "resource://gre/modules/PoliciesHelpers.sys.mjs",
   pemToBase64: "resource://gre/modules/PoliciesHelpers.sys.mjs",
   processMIMEInfo: "resource://gre/modules/PoliciesHelpers.sys.mjs",
   replacePathVariables: "resource://gre/modules/PoliciesHelpers.sys.mjs",
+  reportFailure: "resource://gre/modules/PoliciesHelpers.sys.mjs",
   setDefaultPermission: "resource://gre/modules/PoliciesHelpers.sys.mjs",
   runOncePerModification: "resource://gre/modules/PoliciesHelpers.sys.mjs",
   unblockAboutPage: "resource://gre/modules/PoliciesHelpers.sys.mjs",
@@ -614,7 +616,9 @@ export var Policies = {
 
   Bookmarks: {
     onAllWindowsRestored(manager, param) {
-      lazy.BookmarksPolicies.processBookmarks(param);
+      // Returned so that the engine can report a failure of the bookmark
+      // processing against this policy.
+      return lazy.BookmarksPolicies.processBookmarks(param);
     },
   },
 
@@ -732,13 +736,19 @@ export var Policies = {
             try {
               file = await File.createFromNsIFile(certfile);
             } catch (e) {
-              lazy.log.error(`Unable to find certificate - ${certfilename}`);
+              lazy.reportFailure(
+                "Certificates",
+                `Unable to find certificate - ${certfilename}`
+              );
               continue;
             }
             const reader = new FileReader();
             reader.onloadend = function () {
               if (reader.readyState != reader.DONE) {
-                lazy.log.error(`Unable to read certificate - ${certfile.path}`);
+                lazy.reportFailure(
+                  "Certificates",
+                  `Unable to read certificate - ${certfile.path}`
+                );
                 return;
               }
               const certFile = reader.result;
@@ -759,9 +769,9 @@ export var Policies = {
                     lazy.pemToBase64(certFile)
                   );
                 } catch (ex) {
-                  lazy.log.error(
-                    `Unable to add certificate - ${certfile.path}`,
-                    ex
+                  lazy.reportFailure(
+                    "Certificates",
+                    `Unable to add certificate - ${certfile.path} - ${ex}`
                   );
                 }
               }
@@ -779,17 +789,29 @@ export var Policies = {
                 try {
                   lazy.gCertDB.addCert(certFile, "CT,CT,");
                 } catch (e) {
-                  // It might be PEM instead of DER.
-                  lazy.gCertDB.addCertFromBase64(
-                    lazy.pemToBase64(certFile),
-                    "CT,CT,"
-                  );
+                  try {
+                    // It might be PEM instead of DER.
+                    lazy.gCertDB.addCertFromBase64(
+                      lazy.pemToBase64(certFile),
+                      "CT,CT,"
+                    );
+                  } catch (ex) {
+                    lazy.reportFailure(
+                      "Certificates",
+                      `Unable to add certificate - ${certfile.path} - ${ex}`
+                    );
+                  }
                 }
               }
             };
             reader.readAsBinaryString(file);
           }
-        })();
+        })().catch(e =>
+          lazy.reportFailure(
+            "Certificates",
+            `Unable to import certificates - ${e}`
+          )
+        );
       }
     },
   },
@@ -882,7 +904,8 @@ export var Policies = {
               Ci.nsIPermissionManager.EXPIRE_POLICY
             );
           } catch (ex) {
-            lazy.log.error(
+            lazy.reportFailure(
+              "Cookies",
               `Unable to add cookie session permission - ${origin.href}`
             );
           }
@@ -1215,7 +1238,11 @@ export var Policies = {
             "application/pdf",
             "pdf"
           );
-          lazy.processMIMEInfo({ action: "handleInternally" }, pdfMIMEInfo);
+          lazy.processMIMEInfo(
+            { action: "handleInternally" },
+            pdfMIMEInfo,
+            "DisableBuiltinPDFViewer"
+          );
         });
         return;
       }
@@ -1223,7 +1250,11 @@ export var Policies = {
         "application/pdf",
         "pdf"
       );
-      lazy.processMIMEInfo({ action: "useSystemDefault" }, pdfMIMEInfo);
+      lazy.processMIMEInfo(
+        { action: "useSystemDefault" },
+        pdfMIMEInfo,
+        "DisableBuiltinPDFViewer"
+      );
     },
   },
 
@@ -1824,6 +1855,7 @@ export var Policies = {
   Extensions: {
     onBeforeUIStartup(manager, param) {
       let uninstallingPromise = Promise.resolve();
+      let installingPromise = Promise.resolve();
       if ("Uninstall" in param) {
         uninstallingPromise = lazy.runOncePerModification(
           "extensionsUninstall",
@@ -1853,7 +1885,7 @@ export var Policies = {
         );
       }
       if ("Install" in param) {
-        lazy.runOncePerModification(
+        installingPromise = lazy.runOncePerModification(
           "extensionsInstall",
           JSON.stringify(param.Install),
           async () => {
@@ -1867,9 +1899,19 @@ export var Policies = {
                 const xpiFile = new lazy.FileUtils.File(location);
                 uri = Services.io.newFileURI(xpiFile);
               } catch (e) {
-                uri = Services.io.newURI(location);
+                try {
+                  uri = Services.io.newURI(location);
+                } catch (ex) {
+                  // Keep going so that one bad location doesn't discard the
+                  // add-ons that come after it.
+                  lazy.reportFailure(
+                    "Extensions",
+                    `Invalid add-on location (${location})`
+                  );
+                  continue;
+                }
               }
-              lazy.installAddonFromURL(uri.spec);
+              lazy.installAddonFromURL(uri.spec, null, null, "Extensions");
             }
           }
         );
@@ -1880,6 +1922,9 @@ export var Policies = {
           manager.disallowFeature(`disable-extension:${ID}`);
         }
       }
+      // Returned so that the engine can report a failure of the
+      // uninstall/install steps against this policy.
+      return Promise.all([uninstallingPromise, installingPromise]);
     },
   },
 
@@ -1888,14 +1933,16 @@ export var Policies = {
       try {
         manager.setExtensionSettings(param);
       } catch (e) {
-        lazy.log.error(
+        lazy.reportFailure(
+          "ExtensionSettings",
           `Some ExtensionSettings could not be applied: ${e.message}`
         );
       }
       try {
         lazy.applyExtensionGuards(param);
       } catch (e) {
-        lazy.log.error(
+        lazy.reportFailure(
+          "ExtensionSettings",
           `Invalid runtime_blocked_hosts/runtime_allowed_hosts in ` +
             `ExtensionSettings: ${e.message}`
         );
@@ -1956,10 +2003,11 @@ export var Policies = {
               lazy.installAddonFromURL(
                 extensionSettings[extensionID].install_url,
                 extensionID,
-                existingAddon
+                existingAddon,
+                "ExtensionSettings"
               );
             } else if (!existingAddon) {
-              lazy.installAddonFromRepository(extensionID);
+              lazy.installAddonFromRepository(extensionID, "ExtensionSettings");
             }
             manager.disallowFeature(`uninstall-extension:${extensionID}`);
             if (
@@ -2336,7 +2384,7 @@ export var Policies = {
         for (const mimeType in param.mimeTypes) {
           const mimeInfo = param.mimeTypes[mimeType];
           if (!mimeType) {
-            lazy.log.error("Invalid MIME type (empty)");
+            lazy.reportFailure("Handlers", "Invalid MIME type (empty)");
             continue;
           }
           try {
@@ -2344,9 +2392,12 @@ export var Policies = {
               mimeType,
               ""
             );
-            lazy.processMIMEInfo(mimeInfo, realMIMEInfo);
+            lazy.processMIMEInfo(mimeInfo, realMIMEInfo, "Handlers");
           } catch (e) {
-            lazy.log.error(`Invalid MIME type (${mimeType})`);
+            lazy.reportFailure(
+              "Handlers",
+              `Invalid MIME type (${mimeType}): ${e}`
+            );
           }
         }
       }
@@ -2354,7 +2405,7 @@ export var Policies = {
         for (const extension in param.extensions) {
           const mimeInfo = param.extensions[extension];
           if (!extension) {
-            lazy.log.error("Invalid file extension (empty)");
+            lazy.reportFailure("Handlers", "Invalid file extension (empty)");
             continue;
           }
           try {
@@ -2362,9 +2413,12 @@ export var Policies = {
               "",
               extension
             );
-            lazy.processMIMEInfo(mimeInfo, realMIMEInfo);
+            lazy.processMIMEInfo(mimeInfo, realMIMEInfo, "Handlers");
           } catch (e) {
-            lazy.log.error(`Invalid file extension (${extension})`);
+            lazy.reportFailure(
+              "Handlers",
+              `Invalid file extension (${extension}): ${e}`
+            );
           }
         }
       }
@@ -2372,15 +2426,15 @@ export var Policies = {
         for (const scheme in param.schemes) {
           const handlerInfo = param.schemes[scheme];
           if (!scheme) {
-            lazy.log.error("Invalid scheme (empty)");
+            lazy.reportFailure("Handlers", "Invalid scheme (empty)");
             continue;
           }
           try {
             const realHandlerInfo =
               lazy.gExternalProtocolService.getProtocolHandlerInfo(scheme);
-            lazy.processMIMEInfo(handlerInfo, realHandlerInfo);
+            lazy.processMIMEInfo(handlerInfo, realHandlerInfo, "Handlers");
           } catch (e) {
-            lazy.log.error(`Invalid scheme (${scheme})`);
+            lazy.reportFailure("Handlers", `Invalid scheme (${scheme}): ${e}`);
           }
         }
       }
@@ -3023,14 +3077,16 @@ export var Policies = {
 
       for (const preference in param) {
         if (blockedPrefs.includes(preference)) {
-          lazy.log.error(
+          lazy.reportFailure(
+            "Preferences",
             `Unable to set preference ${preference}. Preference not allowed for security reasons.`
           );
           continue;
         }
         if (preference.startsWith("security.")) {
           if (!allowedSecurityPrefs.includes(preference)) {
-            lazy.log.error(
+            lazy.reportFailure(
+              "Preferences",
               `Unable to set preference ${preference}. Preference not allowed for security reasons.`
             );
             continue;
@@ -3038,14 +3094,24 @@ export var Policies = {
         } else if (
           !allowedPrefixes.some(prefix => preference.startsWith(prefix))
         ) {
-          lazy.log.error(
+          lazy.reportFailure(
+            "Preferences",
             `Unable to set preference ${preference}. Preference not allowed for stability reasons.`
           );
           continue;
         }
         if (typeof param[preference] != "object") {
           // Legacy policy preferences
-          lazy.PoliciesUtils.setAndLockPref(preference, param[preference]);
+          try {
+            lazy.PoliciesUtils.setAndLockPref(preference, param[preference]);
+          } catch (e) {
+            // Keep going so that one bad preference doesn't discard the
+            // preferences that come after it.
+            lazy.reportFailure(
+              "Preferences",
+              lazy.describePreferenceFailure(preference, param[preference], e)
+            );
+          }
         } else {
           if (param[preference].Status == "clear") {
             Services.prefs.clearUserPref(preference);
@@ -3104,8 +3170,13 @@ export var Policies = {
                 break;
             }
           } catch (e) {
-            lazy.log.error(
-              `Unable to set preference ${preference}. Probable type mismatch.`
+            lazy.reportFailure(
+              "Preferences",
+              lazy.describePreferenceFailure(
+                preference,
+                param[preference].Value,
+                e
+              )
             );
           }
 
@@ -3208,7 +3279,10 @@ export var Policies = {
           restartTimeOfDay.Hour = timeOfDay.hour;
           restartTimeOfDay.Minute = timeOfDay.minute;
         } catch (ex) {
-          lazy.log.error("Incorrect format for RestartTimeOfDay");
+          lazy.reportFailure(
+            "RelaunchRequired",
+            "Incorrect format for RestartTimeOfDay"
+          );
         }
       }
       lazy.PoliciesUtils.setAndLockPref(
@@ -3497,7 +3571,9 @@ export var Policies = {
       }
     },
     onAllWindowsRestored(manager, param) {
-      lazy.SearchService.init().then(async () => {
+      // Returned so that the engine can report a failure of any of these
+      // steps against this policy.
+      return lazy.SearchService.init().then(async () => {
         // Adding of engines is handled by the SearchService in the init().
         // Remove can happen after those are added - no engines are allowed
         // to replace the application provided engines, even if they have been
@@ -3517,7 +3593,10 @@ export var Policies = {
                       lazy.SearchService.CHANGE_REASON.ENTERPRISE
                     );
                   } catch (ex) {
-                    lazy.log.error("Unable to remove the search engine", ex);
+                    lazy.reportFailure(
+                      "SearchEngines",
+                      `Unable to remove the search engine ${engineName} - ${ex}`
+                    );
                   }
                 }
               }
@@ -3538,11 +3617,11 @@ export var Policies = {
                   throw new Error("No engine by that name could be found");
                 }
               } catch (ex) {
-                lazy.log.error(
+                lazy.reportFailure(
+                  "SearchEngines",
                   `Search engine lookup failed when attempting to set ` +
                     `the default engine. Requested engine was ` +
-                    `"${param.Default}".`,
-                  ex
+                    `"${param.Default}" - ${ex}`
                 );
               }
               if (defaultEngine) {
@@ -3552,7 +3631,10 @@ export var Policies = {
                     lazy.SearchService.CHANGE_REASON.ENTERPRISE
                   );
                 } catch (ex) {
-                  lazy.log.error("Unable to set the default search engine", ex);
+                  lazy.reportFailure(
+                    "SearchEngines",
+                    `Unable to set the default search engine - ${ex}`
+                  );
                 }
               }
             }
@@ -3572,11 +3654,11 @@ export var Policies = {
                   throw new Error("No engine by that name could be found");
                 }
               } catch (ex) {
-                lazy.log.error(
+                lazy.reportFailure(
+                  "SearchEngines",
                   `Search engine lookup failed when attempting to set ` +
                     `the default private engine. Requested engine was ` +
-                    `"${param.DefaultPrivate}".`,
-                  ex
+                    `"${param.DefaultPrivate}" - ${ex}`
                 );
               }
               if (defaultPrivateEngine) {
@@ -3586,9 +3668,9 @@ export var Policies = {
                     lazy.SearchService.CHANGE_REASON.ENTERPRISE
                   );
                 } catch (ex) {
-                  lazy.log.error(
-                    "Unable to set the default private search engine",
-                    ex
+                  lazy.reportFailure(
+                    "SearchEngines",
+                    `Unable to set the default private search engine - ${ex}`
                   );
                 }
               }
@@ -3658,24 +3740,24 @@ export var Policies = {
             0
           );
         } catch (ex) {
-          lazy.log.error(`Unable to add security device ${deviceName}`);
+          lazy.reportFailure(
+            "SecurityDevices",
+            `Unable to add security device ${deviceName}`
+          );
           lazy.log.debug(ex);
         }
       }
     },
 
     onProfileAfterChange(manager, param) {
-      this._onProfileAfterChangeImpl(manager, param)
-        .then(() => {
-          Services.obs.notifyObservers(
-            null,
-            "test-enterprisepolicies-securitydevices"
-          );
-        })
-        .catch(ex => {
-          lazy.log.error(`Error running SecurityDevices.onProfileAfterChange`);
-          lazy.log.debug(ex);
-        });
+      // Returned so that the engine can report a failure of the impl
+      // against this policy.
+      return this._onProfileAfterChangeImpl(manager, param).then(() => {
+        Services.obs.notifyObservers(
+          null,
+          "test-enterprisepolicies-securitydevices"
+        );
+      });
     },
   },
 

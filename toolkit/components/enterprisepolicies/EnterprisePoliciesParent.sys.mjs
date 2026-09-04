@@ -12,6 +12,7 @@ ChromeUtils.defineESModuleGetters(lazy, {
     "resource://gre/modules/enterprise/EnterpriseCommon.sys.mjs",
   // eslint-disable-next-line mozilla/no-browser-refs-in-toolkit
   Policies: "resource:///modules/policies/Policies.sys.mjs",
+  PolicyFailures: "resource://gre/modules/PoliciesHelpers.sys.mjs",
   PolicySchemaValidator:
     "resource://gre/modules/policies/PolicySchemaValidator.sys.mjs",
   WindowsGPOParser: "resource://gre/modules/policies/WindowsGPOParser.sys.mjs",
@@ -172,7 +173,7 @@ EnterprisePoliciesManager.prototype = {
     if (Services.prefs.getBoolPref(PREF_POLICIES_APPLIED, false)) {
       if ("_cleanup" in lazy.Policies) {
         let policyImpl = lazy.Policies._cleanup;
-        this._schedulePolicyActivations("_cleanup", policyImpl);
+        this._schedulePolicyActivations(null, policyImpl);
       }
       Services.prefs.clearUserPref(PREF_POLICIES_APPLIED);
     }
@@ -583,6 +584,8 @@ EnterprisePoliciesManager.prototype = {
    * @param {object} params parameters the policy was last applied with
    */
   _schedulePolicyRemoval(policyName, params) {
+    lazy.PolicyFailures.clear(policyName);
+
     const policyImpl = lazy.Policies[policyName];
     if (!policyImpl) {
       // This means there is an entry in the schema, but no implementation.
@@ -615,7 +618,7 @@ EnterprisePoliciesManager.prototype = {
     const policySchema = lazy.schemaModule.schema.properties[policyName];
 
     if (!policySchema) {
-      lazy.log.error(`Unknown policy: ${policyName}`);
+      this._reportPolicyError(policyName, `Unknown policy: ${policyName}`);
       return { isValid: false, parsedParams: null };
     }
 
@@ -636,7 +639,8 @@ EnterprisePoliciesManager.prototype = {
     });
 
     if (!isValid) {
-      lazy.log.error(
+      this._reportPolicyError(
+        policyName,
         `Invalid parameters specified for ${policyName}: ${validationError.message}`
       );
       return { isValid: false, parsedParams: null };
@@ -650,7 +654,8 @@ EnterprisePoliciesManager.prototype = {
     }
 
     if (policyImpl.validate && !policyImpl.validate(parsedParams)) {
-      lazy.log.error(
+      this._reportPolicyError(
+        policyName,
         `Parameters for ${policyName} did not validate successfully.`
       );
       return { isValid: false, parsedParams: null };
@@ -688,11 +693,15 @@ EnterprisePoliciesManager.prototype = {
    * Schedule all "activating" callbacks, meaning any
    * "onRemove" callbacks are skipped
    *
-   * @param {string} policyName policy name
+   * @param {?string} policyName policy name, or null for the callbacks that
+   *   do not belong to a policy an administrator configured, so that no
+   *   failure of theirs is reported against one
    * @param {PolicyImpl} policyImpl policy implementation
    * @param {object} [parsedParams] parsed policy parameters
    */
   _schedulePolicyActivations(policyName, policyImpl, parsedParams = undefined) {
+    lazy.PolicyFailures.clear(policyName);
+
     for (let timing of Object.keys(this._callbacks)) {
       if (timing === "onRemove") {
         // Callbacks that remove policies are explicitly scheduled.
@@ -774,13 +783,32 @@ EnterprisePoliciesManager.prototype = {
       let { callback, impl, params, policyName } = callbacks.shift();
       const boundCallback = callback.bind(impl, this, params);
       try {
-        boundCallback();
+        const result = boundCallback();
+        // An async callback rejects long after it returned, so its failure
+        // can only be recorded when it happens.
+        if (typeof result?.then == "function") {
+          result.then(null, ex =>
+            this._reportCallbackFailure(policyName, timing, ex)
+          );
+        }
       } catch (ex) {
-        lazy.log.error(
-          `Error running ${timing} callback for policy ${policyName}: ${ex}`,
-          ex
-        );
+        this._reportCallbackFailure(policyName, timing, ex);
       }
+    }
+  },
+
+  _reportPolicyError(policyName, message) {
+    lazy.log.error(message);
+    lazy.PolicyFailures.report(policyName, message);
+  },
+
+  _reportCallbackFailure(policyName, timing, ex) {
+    const message = policyName
+      ? `Error running ${timing} callback for policy ${policyName}: ${ex}`
+      : `Error running ${timing} callback: ${ex}`;
+    lazy.log.error(message, ex);
+    if (policyName) {
+      lazy.PolicyFailures.report(policyName, message);
     }
   },
 
@@ -795,6 +823,7 @@ EnterprisePoliciesManager.prototype = {
 
     this.status = Ci.nsIEnterprisePolicies.UNINITIALIZED;
     this._parsedPolicies = {};
+    lazy.PolicyFailures.clearAll();
     this._seenParamHashes = new Map();
     this._appliedParamHashes = new Map();
     if (this._isRemotePoliciesSupported()) {
