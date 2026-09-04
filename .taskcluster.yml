@@ -678,7 +678,7 @@ tasks:
                             eventAction: '${event["action"]}'
                         'tasks_for in ["action", "pr-action"]':
                             ownTaskId: '${ownTaskId}'
-                            commTaskId: '${commTaskId}'
+                            commTaskId: '${ownTaskId}'
                             ownerEmail: '${tasks_for}@noreply.mozilla.org'
                             baseRepoUrl: '${repository.url}'
                             repoUrl: '${repository.url}'
