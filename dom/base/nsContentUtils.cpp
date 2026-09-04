@@ -108,7 +108,6 @@
 #include "mozilla/Result.h"
 #include "mozilla/ScopeExit.h"
 #include "mozilla/ScrollContainerFrame.h"
-#include "mozilla/ScrollbarPreferences.h"
 #include "mozilla/ShutdownPhase.h"
 #include "mozilla/Span.h"
 #include "mozilla/StaticAnalysisFunctions.h"
@@ -6298,6 +6297,10 @@ nsresult nsContentUtils::DispatchEvent(
   event->WidgetEventPtr()->mFlags.mOnlySystemGroupDispatch =
       aSystemGroupOnly == SystemGroupOnly::eYes;
 
+  // For the performance reason, aDoc may be set to a raw pointer because it's
+  // used only before dispatching the event. Therefore, we should not use aDoc
+  // anymore.
+  aDoc = nullptr;
   bool doDefault = aTarget->DispatchEvent(*event, CallerType::System, err);
   if (aDefaultAction) {
     *aDefaultAction = doDefault;
@@ -6306,13 +6309,10 @@ nsresult nsContentUtils::DispatchEvent(
 }
 
 // static
-nsresult nsContentUtils::DispatchEvent(Document* aDoc, EventTarget* aTarget,
-                                       WidgetEvent& aEvent,
-                                       EventMessage aEventMessage,
-                                       CanBubble aCanBubble,
-                                       Cancelable aCancelable, Trusted aTrusted,
-                                       bool* aDefaultAction,
-                                       ChromeOnlyDispatch aOnlyChromeDispatch) {
+nsresult nsContentUtils::DispatchEvent(
+    EventTarget* aTarget, WidgetEvent& aEvent, EventMessage aEventMessage,
+    CanBubble aCanBubble, Cancelable aCancelable, Trusted aTrusted,
+    bool* aDefaultAction, ChromeOnlyDispatch aOnlyChromeDispatch) {
   MOZ_ASSERT_IF(aOnlyChromeDispatch == ChromeOnlyDispatch::eYes,
                 aTrusted == Trusted::eYes);
 
@@ -10688,8 +10688,8 @@ void nsContentUtils::FirePageHideEventForFrameLoaderSwap(
 
   for (uint32_t i = 0; i < kids.Length(); ++i) {
     if (kids[i]) {
-      FirePageHideEventForFrameLoaderSwap(kids[i], aChromeEventHandler,
-                                          aOnlySystemGroup);
+      FirePageHideEventForFrameLoaderSwap(
+          MOZ_KnownLive(kids[i]), aChromeEventHandler, aOnlySystemGroup);
     }
   }
 }
@@ -10712,8 +10712,9 @@ void nsContentUtils::FirePageShowEventForFrameLoaderSwap(
 
   for (uint32_t i = 0; i < kids.Length(); ++i) {
     if (kids[i]) {
-      FirePageShowEventForFrameLoaderSwap(kids[i], aChromeEventHandler,
-                                          aFireIfShowing, aOnlySystemGroup);
+      FirePageShowEventForFrameLoaderSwap(MOZ_KnownLive(kids[i]),
+                                          aChromeEventHandler, aFireIfShowing,
+                                          aOnlySystemGroup);
     }
   }
 
@@ -11889,16 +11890,6 @@ bool nsContentUtils::IsSpecificAboutPage(JSObject* aGlobal, const char* aUri) {
   principal->GetAsciiSpec(spec);
 
   return spec.EqualsASCII(aUri);
-}
-
-/* static */
-void nsContentUtils::SetScrollbarsVisibility(nsIDocShell* aDocShell,
-                                             bool aVisible) {
-  if (!aDocShell) {
-    return;
-  }
-  auto pref = aVisible ? ScrollbarPreference::Auto : ScrollbarPreference::Never;
-  nsDocShell::Cast(aDocShell)->SetScrollbarPreference(pref);
 }
 
 /* static */

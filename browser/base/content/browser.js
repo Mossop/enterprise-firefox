@@ -483,7 +483,11 @@ ChromeUtils.defineLazyGetter(this, "PopupNotifications", () => {
       anchorElement?.dispatchEvent(
         new CustomEvent("PopupNotificationsBeforeAnchor", { bubbles: true })
       );
-      if (anchorElement?.checkVisibility()) {
+      if (
+        anchorElement?.checkVisibility(
+          PopupNotifications.CHECK_VISIBILITY_OPTIONS
+        )
+      ) {
         return anchorElement;
       }
       let fallback = [
@@ -492,7 +496,11 @@ ChromeUtils.defineLazyGetter(this, "PopupNotifications", () => {
         document.getElementById("identity-icon"),
         document.getElementById("remote-control-icon"),
       ];
-      return fallback.find(element => element?.checkVisibility()) ?? null;
+      return (
+        fallback.find(element =>
+          element?.checkVisibility(PopupNotifications.CHECK_VISIBILITY_OPTIONS)
+        ) ?? null
+      );
     };
 
     return new PopupNotifications(
@@ -1714,11 +1722,7 @@ function toOpenWindowByType(inType, uri, features) {
   } else if (features) {
     window.open(uri, "_blank", features);
   } else {
-    window.open(
-      uri,
-      "_blank",
-      "chrome,extrachrome,menubar,resizable,scrollbars,status,toolbar"
-    );
+    window.open(uri, "_blank", "chrome,resizable,toolbar");
   }
 }
 /**
