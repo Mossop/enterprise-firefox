@@ -109,7 +109,7 @@ def get_app_version(product_dir="browser"):
 
 
 def get_release_type(parameters):
-    if parameters["project"] not in ("enterprise-firefox", "enterprise-firefox-try"):
+    if parameters["project"] not in ("enterprise-firefox", "enterprise-firefox-try", "enterprise-thunderbird", "enterprise-thunderbird-try"):
         return ""
 
     if parameters["head_ref"] == "refs/heads/enterprise-release":
