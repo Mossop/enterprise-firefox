@@ -1411,13 +1411,6 @@ static DWORD WindowStylesRemovedForBorderStyle(BorderStyle aStyle) {
   if (!(aStyle & BorderStyle::Title)) {
     toRemove |= WS_DLGFRAME;
   }
-  if (!(aStyle & (BorderStyle::Menu | BorderStyle::Close))) {
-    // Looks like getting rid of the system menu also does away with the close
-    // box. So, we only get rid of the system menu and the close box if you
-    // want neither. How does the Windows "Dialog" window class get just
-    // closebox and no sysmenu? Who knows.
-    toRemove |= WS_SYSMENU;
-  }
   if (!(aStyle & BorderStyle::ResizeH)) {
     toRemove |= WS_THICKFRAME;
   }
@@ -4094,7 +4087,7 @@ void nsWindow::DispatchPendingEvents() {
 
 void nsWindow::DispatchCustomEvent(const nsString& eventName) {
   if (Document* doc = GetDocument()) {
-    if (nsPIDOMWindowOuter* win = doc->GetWindow()) {
+    if (const nsCOMPtr<nsPIDOMWindowOuter> win = doc->GetWindow()) {
       win->DispatchCustomEvent(eventName, ChromeOnlyDispatch::eYes);
     }
   }
@@ -4696,7 +4689,9 @@ LRESULT CALLBACK nsWindow::WindowProcInternal(HWND hWnd, UINT msg,
   // Hold the window for the life of this method, in case it gets
   // destroyed during processing, unless we're in the dtor already.
   nsCOMPtr<nsIWidget> kungFuDeathGrip;
-  if (!targetWindow->mInDtor) kungFuDeathGrip = targetWindow;
+  if (!targetWindow->mInDtor) {
+    kungFuDeathGrip = targetWindow;
+  }
 
   targetWindow->IPCWindowProcHandler(msg, wParam, lParam);
 
@@ -4711,7 +4706,8 @@ LRESULT CALLBACK nsWindow::WindowProcInternal(HWND hWnd, UINT msg,
 
   // Call ProcessMessage
   LRESULT retValue;
-  if (targetWindow->ProcessMessage(msg, wParam, lParam, &retValue)) {
+  if (MOZ_KnownLive(targetWindow)
+          ->ProcessMessage(msg, wParam, lParam, &retValue)) {
     return retValue;
   }
 

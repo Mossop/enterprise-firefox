@@ -331,13 +331,9 @@ export function PopupNotifications(tabbrowser, panel, iconBox, options = {}) {
     }
   };
 
-  let documentElement = this.window.document.documentElement;
-  let locationBarHidden = documentElement
-    .getAttribute("chromehidden")
-    .includes("location");
   let isFullscreen = !!this.window.document.fullscreenElement;
 
-  this.panel.setAttribute("followanchor", !locationBarHidden && !isFullscreen);
+  this.panel.setAttribute("followanchor", !isFullscreen);
 
   // There are no anchor icons in DOM fullscreen mode, but we would
   // still like to show the popup notification. To avoid an infinite
@@ -353,7 +349,7 @@ export function PopupNotifications(tabbrowser, panel, iconBox, options = {}) {
   this.window.addEventListener(
     "MozDOMFullscreen:Exited",
     () => {
-      this.panel.setAttribute("followanchor", !locationBarHidden);
+      this.panel.setAttribute("followanchor", "true");
     },
     true
   );
@@ -392,6 +388,10 @@ export function PopupNotifications(tabbrowser, panel, iconBox, options = {}) {
 }
 
 PopupNotifications.prototype = {
+  CHECK_VISIBILITY_OPTIONS: {
+    visibilityProperty: true,
+  },
+
   window: null,
   panel: null,
   tabbrowser: null,
@@ -1348,11 +1348,11 @@ PopupNotifications.prototype = {
       anchorElement = this._getVisibleAnchorElement(anchorElement);
     }
     // In case _getVisibleAnchorElement provided a non-visible element.
-    if (!anchorElement?.checkVisibility()) {
+    if (!anchorElement?.checkVisibility(this.CHECK_VISIBILITY_OPTIONS)) {
       // We only ever show notifications for the current browser,
       // so we can just use the current tab.
       anchorElement = this.tabbrowser.selectedTab;
-      if (!anchorElement?.checkVisibility()) {
+      if (!anchorElement?.checkVisibility(this.CHECK_VISIBILITY_OPTIONS)) {
         // If we're in an entirely chromeless environment, set the anchorElement
         // to null and let openPopup show the notification at (0,0) later.
         anchorElement = null;
