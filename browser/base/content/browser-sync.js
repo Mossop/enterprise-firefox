@@ -1268,6 +1268,12 @@ var gSync = {
     return AppConstants.MOZ_ENTERPRISE && !Services.policies.isAllowed("sync");
   },
 
+  get isSyncTabsLocked() {
+    return (
+      AppConstants.MOZ_ENTERPRISE && !Services.policies.isAllowed("sync-tabs")
+    );
+  },
+
   // Returns the call to action ("signin", "turnonsync", or "connectdevice") for
   // showing the remote tabs promo, or null when the promo should be hidden.
   // Disabled `requiredEngines` also select "turnonsync" when provided.
@@ -1279,14 +1285,14 @@ var gSync = {
     switch (state.status) {
       case UIState.STATUS_NOT_CONFIGURED:
       case UIState.STATUS_NOT_VERIFIED:
-        return "signin";
+        return this.isSyncStateLocked ? null : "signin";
       case UIState.STATUS_SIGNED_IN: {
         const engineDisabled = requiredEngines.some(
           engine =>
             !Services.prefs.getBoolPref(`services.sync.engine.${engine}`, true)
         );
         if (!state.syncEnabled || engineDisabled) {
-          return "turnonsync";
+          return this.isSyncStateLocked ? null : "turnonsync";
         }
         // A null list means it's still loading, so defer to the existing
         // synced-tabs menuitem rather than promoting "connect a device". The
