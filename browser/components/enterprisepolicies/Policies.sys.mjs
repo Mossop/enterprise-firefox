@@ -2,6 +2,8 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this file,
  * You can obtain one at http://mozilla.org/MPL/2.0/. */
 
+/* eslint prefer-const: ["error", { destructuring: "all" }] */
+
 import { XPCOMUtils } from "resource://gre/modules/XPCOMUtils.sys.mjs";
 
 import { AppConstants } from "resource://gre/modules/AppConstants.sys.mjs";
@@ -29,12 +31,14 @@ ChromeUtils.defineESModuleGetters(lazy, {
   FileUtils: "resource://gre/modules/FileUtils.sys.mjs",
   ProxyPolicies: "resource:///modules/policies/ProxyPolicies.sys.mjs",
   SearchService: "moz-src:///toolkit/components/search/SearchService.sys.mjs",
+  SecurityLoggingPolicy:
+    "resource:///modules/policies/SecurityLoggingPolicy.sys.mjs",
   AIChatbotPolicies: "resource:///modules/policies/AIChatbotPolicies.sys.mjs",
   QuickSuggest: "moz-src:///browser/components/urlbar/QuickSuggest.sys.mjs",
   WatermarkPolicy: "resource:///modules/policies/WatermarkPolicy.sys.mjs",
   WebsiteFilter: "resource:///modules/policies/WebsiteFilter.sys.mjs",
   SyncPolicy: "resource:///modules/policies/SyncPolicy.sys.mjs",
-  WindowsLaunchOnLogin: "resource://gre/modules/WindowsLaunchOnLogin.sys.mjs",
+  LaunchOnLogin: "resource://gre/modules/LaunchOnLogin.sys.mjs",
 
   PoliciesUtils: "resource://gre/modules/PoliciesHelpers.sys.mjs",
   addAllowDenyPermissions: "resource://gre/modules/PoliciesHelpers.sys.mjs",
@@ -56,7 +60,7 @@ export const PREF_LOGLEVEL = "browser.policies.loglevel";
 const BROWSER_DOCUMENT_URL = AppConstants.BROWSER_CHROME_URL;
 
 ChromeUtils.defineLazyGetter(lazy, "log", () => {
-  let { ConsoleAPI } = ChromeUtils.importESModule(
+  const { ConsoleAPI } = ChromeUtils.importESModule(
     "resource://gre/modules/Console.sys.mjs"
   );
   return new ConsoleAPI({
@@ -241,9 +245,6 @@ export var Policies = {
     onBeforeAddons(manager, param) {
       lazy.AIChatbotPolicies.applyAIChatbotPolicy(param);
     },
-    onRemove(_manager, _oldParams) {
-      lazy.AIChatbotPolicies.unapplyAIChatbotPolicy();
-    },
   },
 
   AIControls: {
@@ -281,12 +282,12 @@ export var Policies = {
       const defaultLocked = defaultItem?.Locked ?? false;
 
       for (const [key, prefs, aiControlPref] of features) {
-        let item = param[key] ?? defaultItem;
+        const item = param[key] ?? defaultItem;
         if (!item) {
           continue;
         }
-        let value = item.Value;
-        let locked = item.Locked ?? defaultLocked;
+        const value = item.Value;
+        const locked = item.Locked ?? defaultLocked;
         lazy.PoliciesUtils.setDefaultPref(aiControlPref, value, locked);
         for (const pref of prefs) {
           lazy.PoliciesUtils.setDefaultPref(
@@ -310,7 +311,7 @@ export var Policies = {
   AllowedDomainsForApps: {
     onBeforeAddons(manager, param) {
       Services.obs.addObserver(function (subject) {
-        let channel = subject.QueryInterface(Ci.nsIHttpChannel);
+        const channel = subject.QueryInterface(Ci.nsIHttpChannel);
         if (channel.URI.host.endsWith(".google.com")) {
           channel.setRequestHeader("X-GoogApps-Allowed-Domains", param, true);
         }
@@ -327,19 +328,7 @@ export var Policies = {
           true
         );
         manager.disallowFeature("filepickers");
-      } else {
-        lazy.PoliciesUtils.setAndLockPref("widget.disable_file_pickers", false);
-        lazy.PoliciesUtils.setAndLockPref(
-          "browser.download.useDownloadDir",
-          false
-        );
-        manager.allowFeature("filepickers");
       }
-    },
-    onRemove(manager, _oldParams) {
-      lazy.PoliciesUtils.unsetAndUnlockPref("widget.disable_file_pickers");
-      lazy.PoliciesUtils.unsetAndUnlockPref("browser.download.useDownloadDir");
-      manager.allowFeature("filepickers");
     },
   },
 
@@ -349,16 +338,9 @@ export var Policies = {
       // true, we disallow turning off auto updating, and visa versa.
       if (param) {
         manager.disallowFeature("app-auto-updates-off");
-        manager.allowFeature("app-auto-updates-on");
       } else {
         manager.disallowFeature("app-auto-updates-on");
-        manager.allowFeature("app-auto-updates-off");
       }
-    },
-    onRemove(manager, _oldParams) {
-      // In a default unpolicied state, it is allowed to turn auto updating on or off
-      manager.allowFeature("app-auto-updates-on");
-      manager.allowFeature("app-auto-updates-off");
     },
   },
 
@@ -370,7 +352,7 @@ export var Policies = {
       const earliestPinMajorVersion = 102;
       const earliestPinMinorVersion = 0;
 
-      let pinParts = param.split(".");
+      const pinParts = param.split(".");
 
       if (pinParts.length < 2) {
         lazy.log.error("AppUpdatePin has too few dots.");
@@ -539,11 +521,6 @@ export var Policies = {
         param
       );
     },
-    onRemove(_manager, _param) {
-      lazy.PoliciesUtils.unsetAndUnlockPref(
-        "extensions.formautofill.addresses.enabled"
-      );
-    },
   },
 
   AutofillCreditCardEnabled: {
@@ -553,17 +530,11 @@ export var Policies = {
         param
       );
     },
-    onRemove(manager, param) {
-      lazy.PoliciesUtils.unsetAndUnlockPref(
-        "extensions.formautofill.creditCards.enabled",
-        param
-      );
-    },
   },
 
   AutoLaunchProtocolsFromOrigins: {
     onBeforeAddons(manager, param) {
-      for (let info of param) {
+      for (const info of param) {
         lazy.addAllowDenyPermissions(
           `open-protocol-handler^${info.protocol}`,
           info.allowed_origins
@@ -574,20 +545,11 @@ export var Policies = {
 
   BackgroundAppUpdate: {
     onBeforeAddons(manager, param) {
-      // Logic feels a bit reversed here, but it's correct. If BackgroundAppUpdate is
-      // true, we disallow turning off background updating, and visa versa.
       if (param) {
         manager.disallowFeature("app-background-update-off");
-        manager.allowFeature("app-background-update-on");
       } else {
         manager.disallowFeature("app-background-update-on");
-        manager.allowFeature("app-background-update-off");
       }
-    },
-    onRemove(manager, _oldParams) {
-      // In a default unpolicied state, it is allowed to turn background updating on or off
-      manager.allowFeature("app-background-update-on");
-      manager.allowFeature("app-background-update-off");
     },
   },
 
@@ -595,12 +557,7 @@ export var Policies = {
     onBeforeUIStartup(manager, param) {
       if (param) {
         lazy.blockAboutPage(manager, "about:addons", true);
-      } else {
-        lazy.unblockAboutPage(manager, "about:addons");
       }
-    },
-    onRemove(manager, _oldParams) {
-      lazy.unblockAboutPage(manager, "about:addons");
     },
   },
 
@@ -624,8 +581,6 @@ export var Policies = {
     onBeforeAddons(manager, param) {
       if (param) {
         manager.disallowFeature("profileManagement");
-      } else {
-        manager.allowFeature("profileManagement");
       }
     },
     onBeforeUIStartup(manager, param) {
@@ -635,21 +590,7 @@ export var Policies = {
         lazy.blockAboutPage(manager, "about:editprofile");
         lazy.blockAboutPage(manager, "about:deleteprofile");
         lazy.blockAboutPage(manager, "about:newprofile");
-      } else {
-        lazy.unblockAboutPage(manager, "about:profiles");
-        lazy.unblockAboutPage(manager, "about:profilemanager");
-        lazy.unblockAboutPage(manager, "about:editprofile");
-        lazy.unblockAboutPage(manager, "about:deleteprofile");
-        lazy.unblockAboutPage(manager, "about:newprofile");
       }
-    },
-    onRemove(manager, _oldParams) {
-      manager.allowFeature("profileManagement");
-      lazy.unblockAboutPage(manager, "about:profiles");
-      lazy.unblockAboutPage(manager, "about:profilemanager");
-      lazy.unblockAboutPage(manager, "about:editprofile");
-      lazy.unblockAboutPage(manager, "about:deleteprofile");
-      lazy.unblockAboutPage(manager, "about:newprofile");
     },
   },
 
@@ -666,47 +607,6 @@ export var Policies = {
     onRemove(manager, _oldParams) {
       lazy.unblockAboutPage(manager, "about:support");
       manager.allowFeature("aboutSupport");
-    },
-  },
-
-  BlocklistDomainBrowsedTelemetry: {
-    onBeforeAddons(manager, param) {
-      if (param && typeof param === "object") {
-        // Enable/disable blocklist domain browsed telemetry
-        if (typeof param.Enabled === "boolean") {
-          lazy.PoliciesUtils.setAndLockPref(
-            "browser.policies.enterprise.telemetry.blocklistDomainBrowsed.enabled",
-            param.Enabled
-          );
-        } else {
-          lazy.PoliciesUtils.unsetAndUnlockPref(
-            "browser.policies.enterprise.telemetry.blocklistDomainBrowsed.enabled"
-          );
-        }
-
-        // Set URL logging level
-        if (
-          typeof param.UrlLogging === "string" &&
-          ["full", "domain", "none"].includes(param.UrlLogging)
-        ) {
-          lazy.PoliciesUtils.setAndLockPref(
-            "browser.policies.enterprise.telemetry.blocklistDomainBrowsed.urlLogging",
-            param.UrlLogging
-          );
-        } else {
-          lazy.PoliciesUtils.unsetAndUnlockPref(
-            "browser.policies.enterprise.telemetry.blocklistDomainBrowsed.urlLogging"
-          );
-        }
-      }
-    },
-    onRemove(_manager, _oldParams) {
-      lazy.PoliciesUtils.unsetAndUnlockPref(
-        "browser.policies.enterprise.telemetry.blocklistDomainBrowsed.enabled"
-      );
-      lazy.PoliciesUtils.unsetAndUnlockPref(
-        "browser.policies.enterprise.telemetry.blocklistDomainBrowsed.urlLogging"
-      );
     },
   },
 
@@ -778,11 +678,6 @@ export var Policies = {
         param
       );
     },
-    onRemove(_manager, _oldParams) {
-      lazy.PoliciesUtils.unsetAndUnlockPref(
-        "network.captive-portal-service.enabled"
-      );
-    },
   },
 
   Certificates: {
@@ -796,7 +691,7 @@ export var Policies = {
       if ("Install" in param) {
         (async () => {
           let dirs = [];
-          let platform = AppConstants.platform;
+          const platform = AppConstants.platform;
           if (platform == "win") {
             dirs = [
               // Ugly, but there is no official way to get %USERNAME\AppData\Roaming\Mozilla.
@@ -812,7 +707,7 @@ export var Policies = {
             ];
           }
           dirs.unshift(Services.dirsvc.get("XREAppDist", Ci.nsIFile));
-          for (let certfilename of param.Install) {
+          for (const certfilename of param.Install) {
             let certfile;
             try {
               certfile = Cc["@mozilla.org/file/local;1"].createInstance(
@@ -820,7 +715,7 @@ export var Policies = {
               );
               certfile.initWithPath(certfilename);
             } catch (e) {
-              for (let dir of dirs) {
+              for (const dir of dirs) {
                 certfile = dir.clone();
                 certfile.append(
                   platform == "linux" ? "certificates" : "Certificates"
@@ -838,14 +733,14 @@ export var Policies = {
               lazy.log.error(`Unable to find certificate - ${certfilename}`);
               continue;
             }
-            let reader = new FileReader();
+            const reader = new FileReader();
             reader.onloadend = function () {
               if (reader.readyState != reader.DONE) {
                 lazy.log.error(`Unable to read certificate - ${certfile.path}`);
                 return;
               }
-              let certFile = reader.result;
-              let certFileArray = [];
+              const certFile = reader.result;
+              const certFileArray = [];
               for (let i = 0; i < certFile.length; i++) {
                 certFileArray.push(certFile.charCodeAt(i));
               }
@@ -974,7 +869,7 @@ export var Policies = {
       }
 
       if (param.AllowSession) {
-        for (let origin of param.AllowSession) {
+        for (const origin of param.AllowSession) {
           try {
             Services.perms.addFromPrincipal(
               Services.scriptSecurityManager.createContentPrincipalFromOrigin(
@@ -1000,7 +895,7 @@ export var Policies = {
           "clearCookiesForBlockedHosts",
           hosts,
           () => {
-            for (let blocked of param.Block) {
+            for (const blocked of param.Block) {
               Services.cookies.removeCookiesWithOriginAttributes(
                 "{}",
                 blocked.hostname
@@ -1017,7 +912,7 @@ export var Policies = {
       }
 
       // New Cookie Behavior option takes precendence
-      let defaultPref = Services.prefs.getDefaultBranch("");
+      const defaultPref = Services.prefs.getDefaultBranch("");
       let newCookieBehavior = defaultPref.getIntPref(
         "network.cookie.cookieBehavior"
       );
@@ -1025,7 +920,7 @@ export var Policies = {
         "network.cookie.cookieBehavior.pbmode"
       );
       if ("Behavior" in param || "BehaviorPrivateBrowsing" in param) {
-        let behaviors = {
+        const behaviors = {
           accept: Ci.nsICookieService.BEHAVIOR_ACCEPT,
           "reject-foreign": Ci.nsICookieService.BEHAVIOR_REJECT_FOREIGN,
           reject: Ci.nsICookieService.BEHAVIOR_REJECT,
@@ -1080,7 +975,7 @@ export var Policies = {
       );
     },
     onRemove(manager, param) {
-      for (let origin of [
+      for (const origin of [
         ...(param.Allow ?? []),
         ...(param.Block ?? []),
         ...(param.AllowSession ?? []),
@@ -1216,7 +1111,7 @@ export var Policies = {
       // regexes) in about:policies#errors. Built-in DLP otherwise drives the
       // same Content Analysis service as the external ContentAnalysis policy;
       // reconcileContentAnalysis owns the shared prefs and the precedence.
-      for (let error of lazy.ContentAnalysisPolicies.validateDlpRules(
+      for (const error of lazy.ContentAnalysisPolicies.validateDlpRules(
         param.Rules ?? []
       ).errors) {
         lazy.log.error(error);
@@ -1275,10 +1170,6 @@ export var Policies = {
         );
       }
     },
-    onRemove(_manager, _param) {
-      // Making sure WebSerial is always default opt-in when the policy engine is active
-      lazy.PoliciesUtils.unsetAndUnlockPref("dom.webserial.enabled");
-    },
   },
 
   DisableAccounts: {
@@ -1289,14 +1180,7 @@ export var Policies = {
           "browser.aboutwelcome.enabled",
           false
         );
-      } else {
-        lazy.PoliciesUtils.unsetAndUnlockPref("identity.fxaccounts.enabled");
-        lazy.PoliciesUtils.unsetAndUnlockPref("browser.aboutwelcome.enabled");
       }
-    },
-    onRemove(_manager, _oldParams) {
-      lazy.PoliciesUtils.unsetAndUnlockPref("identity.fxaccounts.enabled");
-      lazy.PoliciesUtils.unsetAndUnlockPref("browser.aboutwelcome.enabled");
     },
   },
 
@@ -1304,18 +1188,13 @@ export var Policies = {
     onBeforeAddons(manager, param) {
       if (param) {
         manager.disallowFeature("appUpdate");
-      } else {
-        manager.allowFeature("appUpdate");
       }
-    },
-    onRemove(manager, _oldParams) {
-      manager.allowFeature("appUpdate");
     },
   },
 
   DisableBuiltinPDFViewer: {
     onBeforeAddons(manager, param) {
-      let policies = Services.policies.getActivePolicies();
+      const policies = Services.policies.getActivePolicies();
       if (
         policies.Handlers?.mimeTypes?.["application/pdf"] ||
         policies.Handlers?.extensions?.pdf
@@ -1330,7 +1209,7 @@ export var Policies = {
         // Only set handleInternally once per policy value; don't override the
         // user's handler choice on every subsequent startup.
         lazy.runOncePerModification("disableBuiltinPDFViewer", "false", () => {
-          let pdfMIMEInfo = lazy.gMIMEService.getFromTypeAndExtension(
+          const pdfMIMEInfo = lazy.gMIMEService.getFromTypeAndExtension(
             "application/pdf",
             "pdf"
           );
@@ -1338,7 +1217,7 @@ export var Policies = {
         });
         return;
       }
-      let pdfMIMEInfo = lazy.gMIMEService.getFromTypeAndExtension(
+      const pdfMIMEInfo = lazy.gMIMEService.getFromTypeAndExtension(
         "application/pdf",
         "pdf"
       );
@@ -1348,7 +1227,7 @@ export var Policies = {
 
   DisabledCiphers: {
     onBeforeAddons(manager, param) {
-      let cipherPrefs = {
+      const cipherPrefs = {
         TLS_ECDHE_RSA_WITH_AES_128_GCM_SHA256:
           "security.ssl3.ecdhe_rsa_aes_128_gcm_sha256",
         TLS_ECDHE_ECDSA_WITH_AES_128_GCM_SHA256:
@@ -1382,7 +1261,7 @@ export var Policies = {
         TLS_AES_256_GCM_SHA384: "security.tls13.aes_256_gcm_sha384",
       };
 
-      for (let cipher in param) {
+      for (const cipher in param) {
         lazy.PoliciesUtils.setAndLockPref(cipherPrefs[cipher], !param[cipher]);
       }
     },
@@ -1436,18 +1315,7 @@ export var Policies = {
           "network.dns.http3_echconfig.enabled",
           false
         );
-      } else {
-        lazy.PoliciesUtils.unsetAndUnlockPref("network.dns.echconfig.enabled");
-        lazy.PoliciesUtils.unsetAndUnlockPref(
-          "network.dns.http3_echconfig.enabled"
-        );
       }
-    },
-    onRemove(_manager, _oldParams) {
-      lazy.PoliciesUtils.unsetAndUnlockPref("network.dns.echconfig.enabled");
-      lazy.PoliciesUtils.unsetAndUnlockPref(
-        "network.dns.http3_echconfig.enabled"
-      );
     },
   },
 
@@ -1455,12 +1323,7 @@ export var Policies = {
     onBeforeUIStartup(manager, param) {
       if (param) {
         manager.disallowFeature("feedbackCommands");
-      } else {
-        manager.allowFeature("feedbackCommands");
       }
-    },
-    onRemove(manager, _oldParams) {
-      manager.allowFeature("feedbackCommands");
     },
   },
 
@@ -1477,20 +1340,7 @@ export var Policies = {
           "browser.aboutwelcome.enabled",
           false
         );
-      } else {
-        lazy.PoliciesUtils.setAndLockPref("identity.fxaccounts.enabled", true);
-        lazy.PoliciesUtils.setAndLockPref("browser.aboutwelcome.enabled", true);
       }
-    },
-    onRemove(manager, _oldParams) {
-      // If DisableAccounts is set, let it take precedence.
-      // TODO: true for onRemove as well?
-      if ("DisableAccounts" in manager.getActivePolicies()) {
-        return;
-      }
-
-      lazy.PoliciesUtils.unsetAndUnlockPref("identity.fxaccounts.enabled");
-      lazy.PoliciesUtils.unsetAndUnlockPref("browser.aboutwelcome.enabled");
     },
   },
 
@@ -1501,17 +1351,7 @@ export var Policies = {
           "screenshots.browser.component.enabled",
           false
         );
-      } else {
-        lazy.PoliciesUtils.setAndLockPref(
-          "screenshots.browser.component.enabled",
-          true
-        );
       }
-    },
-    onRemove(_manager, _oldParams) {
-      lazy.PoliciesUtils.unsetAndUnlockPref(
-        "screenshots.browser.component.enabled"
-      );
     },
   },
 
@@ -1527,26 +1367,7 @@ export var Policies = {
           "browser.newtabpage.activity-stream.asrouter.userprefs.cfr.features",
           false
         );
-      } else {
-        manager.allowFeature("Shield");
-        lazy.PoliciesUtils.setAndLockPref(
-          "browser.newtabpage.activity-stream.asrouter.userprefs.cfr.addons",
-          true
-        );
-        lazy.PoliciesUtils.setAndLockPref(
-          "browser.newtabpage.activity-stream.asrouter.userprefs.cfr.features",
-          true
-        );
       }
-    },
-    onRemove(manager, _oldParams) {
-      manager.allowFeature("Shield");
-      lazy.PoliciesUtils.unsetAndUnlockPref(
-        "browser.newtabpage.activity-stream.asrouter.userprefs.cfr.addons"
-      );
-      lazy.PoliciesUtils.unsetAndUnlockPref(
-        "browser.newtabpage.activity-stream.asrouter.userprefs.cfr.features"
-      );
     },
   },
 
@@ -1554,8 +1375,6 @@ export var Policies = {
     onProfileAfterChange(manager, param) {
       if (param) {
         lazy.PoliciesUtils.setAndLockPref("privacy.panicButton.enabled", false);
-      } else {
-        lazy.PoliciesUtils.setAndLockPref("privacy.panicButton.enabled", true);
       }
     },
   },
@@ -1564,19 +1383,13 @@ export var Policies = {
     onBeforeUIStartup(manager, param) {
       if (param) {
         lazy.PoliciesUtils.setAndLockPref("browser.formfill.enable", false);
-      } else {
-        lazy.PoliciesUtils.setAndLockPref("browser.formfill.enable", true);
       }
     },
   },
 
-  // The policy got applied by the policy engine when building the CombinedPoliciesProvider.
-  // It skipped any local policy provider (policies.json, Windows GPO and macOS plist)
-  DisableLocalPolicies: {},
-
   DisableLaunchOnLogin: {
     onBeforeAddons(manager, param) {
-      if (!param || AppConstants.platform !== "win") {
+      if (!param) {
         return;
       }
       manager.disallowFeature("launchOnLogin");
@@ -1584,16 +1397,18 @@ export var Policies = {
         "browser.startup.windowsLaunchOnLogin.enabled",
         false
       );
-      lazy.WindowsLaunchOnLogin.removeLaunchOnLogin();
+      lazy.LaunchOnLogin.disable();
     },
   },
+
+  // The policy got applied by the policy engine when building the CombinedPoliciesProvider.
+  // It skipped any local policy provider (policies.json, Windows GPO and macOS plist)
+  DisableLocalPolicies: {},
 
   DisableMasterPasswordCreation: {
     onBeforeUIStartup(manager, param) {
       if (param) {
         manager.disallowFeature("createMasterPassword");
-      } else {
-        manager.allowFeature("createMasterPassword");
       }
     },
   },
@@ -1602,8 +1417,6 @@ export var Policies = {
     onBeforeUIStartup(manager, param) {
       if (param) {
         manager.disallowFeature("passwordReveal");
-      } else {
-        manager.allowFeature("passwordReveal");
       }
     },
   },
@@ -1617,21 +1430,7 @@ export var Policies = {
           "browser.privatebrowsing.autostart",
           false
         );
-      } else {
-        manager.allowFeature("privatebrowsing");
-        lazy.unblockAboutPage(manager, "about:privatebrowsing");
-        lazy.PoliciesUtils.setAndLockPref(
-          "browser.privatebrowsing.autostart",
-          true
-        );
       }
-    },
-    onRemove(manager, _oldParams) {
-      manager.allowFeature("privatebrowsing");
-      lazy.unblockAboutPage(manager, "about:privatebrowsing");
-      lazy.PoliciesUtils.unsetAndUnlockPref(
-        "browser.privatebrowsing.autostart"
-      );
     },
   },
 
@@ -1643,12 +1442,6 @@ export var Policies = {
           "browser.newtabpage.activity-stream.migrationExpired",
           true
         );
-      } else {
-        manager.allowFeature("profileImport");
-        lazy.PoliciesUtils.setAndLockPref(
-          "browser.newtabpage.activity-stream.migrationExpired",
-          false
-        );
       }
     },
   },
@@ -1658,9 +1451,6 @@ export var Policies = {
       if (param) {
         manager.disallowFeature("profileRefresh");
         lazy.PoliciesUtils.setAndLockPref("browser.disableResetPrompt", true);
-      } else {
-        manager.allowFeature("profileRefresh");
-        lazy.PoliciesUtils.setAndLockPref("browser.disableResetPrompt", false);
       }
     },
   },
@@ -1669,8 +1459,6 @@ export var Policies = {
     onBeforeAddons(manager, param) {
       if (param) {
         manager.disallowFeature("NimbusRollouts");
-      } else {
-        manager.allowFeature("NimbusRollouts");
       }
     },
   },
@@ -1687,8 +1475,6 @@ export var Policies = {
     onBeforeUIStartup(manager, param) {
       if (param) {
         manager.disallowFeature("safeMode");
-      } else {
-        manager.allowFeature("safeMode");
       }
     },
   },
@@ -1715,8 +1501,6 @@ export var Policies = {
     onBeforeUIStartup(manager, param) {
       if (param) {
         manager.disallowFeature("setDesktopBackground");
-      } else {
-        manager.allowFeature("setDesktopBackground");
       }
     },
   },
@@ -1725,8 +1509,6 @@ export var Policies = {
     onBeforeAddons(manager, param) {
       if (param) {
         manager.disallowFeature("SysAddonUpdate");
-      } else {
-        manager.allowFeature("SysAddonUpdate");
       }
     },
   },
@@ -1751,40 +1533,7 @@ export var Policies = {
           false
         );
         lazy.blockAboutPage(manager, "about:telemetry");
-      } else {
-        lazy.PoliciesUtils.setAndLockPref(
-          "datareporting.healthreport.uploadEnabled",
-          true
-        );
-        lazy.PoliciesUtils.setAndLockPref(
-          "datareporting.policy.dataSubmissionEnabled",
-          true
-        );
-        lazy.PoliciesUtils.setAndLockPref(
-          "toolkit.telemetry.archive.enabled",
-          true
-        );
-        lazy.PoliciesUtils.setAndLockPref(
-          "datareporting.usage.uploadEnabled",
-          true
-        );
-        lazy.unblockAboutPage(manager, "about:telemetry");
       }
-    },
-    onRemove(manager, _oldParams) {
-      lazy.PoliciesUtils.unsetAndUnlockPref(
-        "datareporting.healthreport.uploadEnabled"
-      );
-      lazy.PoliciesUtils.unsetAndUnlockPref(
-        "datareporting.policy.dataSubmissionEnabled"
-      );
-      lazy.PoliciesUtils.unsetAndUnlockPref(
-        "toolkit.telemetry.archive.enabled"
-      );
-      lazy.PoliciesUtils.unsetAndUnlockPref(
-        "datareporting.usage.uploadEnabled"
-      );
-      lazy.unblockAboutPage(manager, "about:telemetry");
     },
   },
 
@@ -1792,8 +1541,6 @@ export var Policies = {
     onBeforeUIStartup(manager, param) {
       if (param) {
         manager.disallowFeature("thirdPartyModuleBlocking");
-      } else {
-        manager.allowFeature("thirdPartyModuleBlocking");
       }
     },
   },
@@ -1810,7 +1557,7 @@ export var Policies = {
       // If this policy was already applied and the user chose to re-hide the
       // bookmarks toolbar, do not show it again.
       lazy.runOncePerModification("displayBookmarksToolbar", visibility, () => {
-        let visibilityPref = "browser.toolbars.bookmarks.visibility";
+        const visibilityPref = "browser.toolbars.bookmarks.visibility";
         Services.prefs.setCharPref(visibilityPref, visibility);
       });
     },
@@ -1928,61 +1675,6 @@ export var Policies = {
     },
   },
 
-  DownloadTelemetry: {
-    onBeforeAddons(manager, param) {
-      if (param && typeof param === "object") {
-        // Enable/disable download telemetry
-        if (typeof param.Enabled === "boolean") {
-          lazy.PoliciesUtils.setAndLockPref(
-            "browser.download.enterprise.telemetry.enabled",
-            param.Enabled
-          );
-        }
-
-        // Set URL logging level
-        if (
-          typeof param.UrlLogging === "string" &&
-          ["full", "domain", "none"].includes(param.UrlLogging)
-        ) {
-          lazy.PoliciesUtils.setAndLockPref(
-            "browser.download.enterprise.telemetry.urlLogging",
-            param.UrlLogging
-          );
-        }
-
-        // Set file logging level
-        if (
-          typeof param.FileLogging === "string" &&
-          ["full", "metadata", "none"].includes(param.FileLogging)
-        ) {
-          lazy.PoliciesUtils.setAndLockPref(
-            "browser.download.enterprise.telemetry.fileLogging",
-            param.FileLogging
-          );
-        }
-      }
-    },
-    onRemove(manager, oldParams) {
-      if (oldParams && typeof oldParams === "object") {
-        if ("Enabled" in oldParams) {
-          lazy.PoliciesUtils.unsetAndUnlockPref(
-            "browser.download.enterprise.telemetry.enabled"
-          );
-        }
-        if ("UrlLogging" in oldParams) {
-          lazy.PoliciesUtils.unsetAndUnlockPref(
-            "browser.download.enterprise.telemetry.urlLogging"
-          );
-        }
-        if ("FileLogging" in oldParams) {
-          lazy.PoliciesUtils.unsetAndUnlockPref(
-            "browser.download.enterprise.telemetry.fileLogging"
-          );
-        }
-      }
-    },
-  },
-
   EnableTrackingProtection: {
     onAllWindowsRestored(manager, param) {
       if (param.Category) {
@@ -1993,7 +1685,7 @@ export var Policies = {
           param.Category,
           true
         );
-        let { ContentBlockingPrefs } = ChromeUtils.importESModule(
+        const { ContentBlockingPrefs } = ChromeUtils.importESModule(
           "moz-src:///browser/components/protections/ContentBlockingPrefs.sys.mjs"
         );
         // These are always locked because they would reset at
@@ -2140,10 +1832,10 @@ export var Policies = {
             Services.prefs.clearUserPref(
               "browser.policies.runOncePerModification.extensionsInstall"
             );
-            let addons = await lazy.AddonManager.getAddonsByIDs(
+            const addons = await lazy.AddonManager.getAddonsByIDs(
               param.Uninstall
             );
-            for (let addon of addons) {
+            for (const addon of addons) {
               if (addon) {
                 try {
                   await addon.uninstall();
@@ -2164,13 +1856,13 @@ export var Policies = {
           JSON.stringify(param.Install),
           async () => {
             await uninstallingPromise;
-            for (let location of param.Install) {
+            for (const location of param.Install) {
               let uri;
               try {
                 // We need to try as a file first because
                 // Windows paths are valid URIs.
                 // This is done for legacy support (old API)
-                let xpiFile = new lazy.FileUtils.File(location);
+                const xpiFile = new lazy.FileUtils.File(location);
                 uri = Services.io.newFileURI(xpiFile);
               } catch (e) {
                 uri = Services.io.newURI(location);
@@ -2181,7 +1873,7 @@ export var Policies = {
         );
       }
       if ("Locked" in param) {
-        for (let ID of param.Locked) {
+        for (const ID of param.Locked) {
           manager.disallowFeature(`uninstall-extension:${ID}`);
           manager.disallowFeature(`disable-extension:${ID}`);
         }
@@ -2208,7 +1900,7 @@ export var Policies = {
       }
     },
     async onBeforeUIStartup(manager, param) {
-      let extensionSettings = param;
+      const extensionSettings = param;
       let blockAllExtensions = false;
       if ("*" in extensionSettings) {
         if (
@@ -2229,7 +1921,7 @@ export var Policies = {
           manager.disallowFeature("installTemporaryAddon");
         }
         if ("restricted_domains" in extensionSettings["*"]) {
-          let restrictedDomains = Services.prefs
+          const restrictedDomains = Services.prefs
             .getCharPref("extensions.webextensions.restrictedDomains")
             .split(",");
           lazy.PoliciesUtils.setAndLockPref(
@@ -2240,12 +1932,12 @@ export var Policies = {
           );
         }
       }
-      let addons = new Map();
-      for (let a of await lazy.AddonManager.getAllAddons()) {
+      const addons = new Map();
+      for (const a of await lazy.AddonManager.getAllAddons()) {
         addons.set(a.id, a);
       }
-      let allowedExtensions = [];
-      for (let extensionID in extensionSettings) {
+      const allowedExtensions = [];
+      for (const extensionID in extensionSettings) {
         if (extensionID == "*") {
           // Ignore global settings
           continue;
@@ -2284,7 +1976,7 @@ export var Policies = {
           ) {
             if (addons.has(extensionID)) {
               // Can't use the addon from getActiveAddons since it doesn't have uninstall.
-              let addon = await lazy.AddonManager.getAddonByID(extensionID);
+              const addon = await lazy.AddonManager.getAddonByID(extensionID);
               try {
                 await addon.uninstall();
                 addons.delete(extensionID);
@@ -2298,9 +1990,9 @@ export var Policies = {
           }
         }
       }
-      let allowedTypes = extensionSettings["*"]?.allowed_types;
+      const allowedTypes = extensionSettings["*"]?.allowed_types;
       if (blockAllExtensions || allowedTypes) {
-        for (let addon of addons.values()) {
+        for (const addon of addons.values()) {
           if (
             addon.isSystem ||
             addon.isBuiltin ||
@@ -2318,7 +2010,7 @@ export var Policies = {
           ) {
             try {
               // Can't use the addon from getActiveAddons since it doesn't have uninstall.
-              let addonToUninstall = await lazy.AddonManager.getAddonByID(
+              const addonToUninstall = await lazy.AddonManager.getAddonByID(
                 addon.id
               );
               await addonToUninstall.uninstall();
@@ -2336,7 +2028,7 @@ export var Policies = {
       // Revoke any granted optional permissions that are now blocked. The
       // appDisabled refresh below handles addons whose required permissions
       // are blocked (via mayInstallAddon -> isUsableAddon).
-      for (let addon of addons.values()) {
+      for (const addon of addons.values()) {
         if (
           addon.isSystem ||
           addon.isBuiltin ||
@@ -2344,19 +2036,19 @@ export var Policies = {
         ) {
           continue;
         }
-        let blockedPerms =
+        const blockedPerms =
           Services.policies.getExtensionSettings(addon.id)
             ?.blocked_permissions ?? [];
         if (!blockedPerms.length) {
           continue;
         }
         try {
-          let granted = await lazy.ExtensionPermissions.get(addon.id);
-          let toRemove = granted.permissions.filter(perm =>
+          const granted = await lazy.ExtensionPermissions.get(addon.id);
+          const toRemove = granted.permissions.filter(perm =>
             blockedPerms.includes(perm)
           );
           if (toRemove.length) {
-            let extension = WebExtensionPolicy.getByID(addon.id)?.extension;
+            const extension = WebExtensionPolicy.getByID(addon.id)?.extension;
             await lazy.ExtensionPermissions.remove(
               addon.id,
               { permissions: toRemove, origins: [], data_collection: [] },
@@ -2398,7 +2090,7 @@ export var Policies = {
         "extensions.webextensions.restrictedDomains"
       );
 
-      let activePolicies = manager.getActivePolicies();
+      const activePolicies = manager.getActivePolicies();
 
       // Don't re-allow installTemporaryAddon if it's still
       // disallowed by the InstallAddonsPermission policy.
@@ -2411,14 +2103,14 @@ export var Policies = {
 
       // Don't re-allow uninstall-/disable-extension:<id> if it's
       // still disallowed by the Extensions policy.
-      let lockedByExtensions = new Set(
+      const lockedByExtensions = new Set(
         activePolicies?.Extensions?.Locked ?? []
       );
-      for (let extensionID in oldParam) {
+      for (const extensionID in oldParam) {
         if (extensionID == "*" || lockedByExtensions.has(extensionID)) {
           continue;
         }
-        let mode = oldParam[extensionID].installation_mode;
+        const mode = oldParam[extensionID].installation_mode;
         if (mode == "force_installed" || mode == "normal_installed") {
           manager.allowFeature(`uninstall-extension:${extensionID}`);
           if (mode == "force_installed") {
@@ -2433,7 +2125,9 @@ export var Policies = {
 
   ExtensionUpdate: {
     onBeforeAddons(manager, param) {
-      lazy.PoliciesUtils.setAndLockPref("extensions.update.enabled", param);
+      if (!param) {
+        lazy.PoliciesUtils.setAndLockPref("extensions.update.enabled", param);
+      }
     },
   },
 
@@ -2523,6 +2217,26 @@ export var Policies = {
           param.Locked
         );
       }
+      if (param.Widgets) {
+        if ("Enabled" in param.Widgets) {
+          lazy.PoliciesUtils.setDefaultPref(
+            "browser.newtabpage.activity-stream.widgets.enabled",
+            param.Widgets.Enabled,
+            param.Locked
+          );
+        }
+        // Blocked always locks, regardless of the Locked property: the lock is
+        // what blocks the widget, and it is enough on its own whatever the
+        // widget's system pref is set to. IDs aren't validated, so one policy
+        // file stays valid across versions that add or remove widgets.
+        for (const id of param.Widgets.Blocked ?? []) {
+          lazy.PoliciesUtils.setDefaultPref(
+            `browser.newtabpage.activity-stream.widgets.${id}.enabled`,
+            false,
+            true
+          );
+        }
+      }
     },
   },
 
@@ -2558,7 +2272,7 @@ export var Policies = {
 
   GenerativeAI: {
     onBeforeAddons(manager, param) {
-      let policies = Services.policies.getActivePolicies();
+      const policies = Services.policies.getActivePolicies();
       if (policies.AIControls) {
         lazy.log.warn("Ignoring GenerativeAI policy in favor of AIControls");
         return;
@@ -2617,9 +2331,9 @@ export var Policies = {
   Handlers: {
     onBeforeAddons(manager, param) {
       if ("mimeTypes" in param) {
-        for (let mimeType in param.mimeTypes) {
-          let mimeInfo = param.mimeTypes[mimeType];
-          let realMIMEInfo = lazy.gMIMEService.getFromTypeAndExtension(
+        for (const mimeType in param.mimeTypes) {
+          const mimeInfo = param.mimeTypes[mimeType];
+          const realMIMEInfo = lazy.gMIMEService.getFromTypeAndExtension(
             mimeType,
             ""
           );
@@ -2627,10 +2341,10 @@ export var Policies = {
         }
       }
       if ("extensions" in param) {
-        for (let extension in param.extensions) {
-          let mimeInfo = param.extensions[extension];
+        for (const extension in param.extensions) {
+          const mimeInfo = param.extensions[extension];
           try {
-            let realMIMEInfo = lazy.gMIMEService.getFromTypeAndExtension(
+            const realMIMEInfo = lazy.gMIMEService.getFromTypeAndExtension(
               "",
               extension
             );
@@ -2641,9 +2355,9 @@ export var Policies = {
         }
       }
       if ("schemes" in param) {
-        for (let scheme in param.schemes) {
-          let handlerInfo = param.schemes[scheme];
-          let realHandlerInfo =
+        for (const scheme in param.schemes) {
+          const handlerInfo = param.schemes[scheme];
+          const realHandlerInfo =
             lazy.gExternalProtocolService.getProtocolHandlerInfo(scheme);
           lazy.processMIMEInfo(handlerInfo, realHandlerInfo);
         }
@@ -2655,11 +2369,6 @@ export var Policies = {
     onBeforeAddons(manager, param) {
       if (!param) {
         lazy.PoliciesUtils.setAndLockPref("layers.acceleration.disabled", true);
-      } else {
-        lazy.PoliciesUtils.setAndLockPref(
-          "layers.acceleration.disabled",
-          false
-        );
       }
     },
   },
@@ -2796,6 +2505,14 @@ export var Policies = {
             "browser.newtabpage.activity-stream.asrouter.userprefs.cfr.features",
             false
           );
+          lazy.PoliciesUtils.setAndLockPref(
+            "extensions.getAddons.showPane",
+            false
+          );
+          lazy.PoliciesUtils.setAndLockPref(
+            "extensions.htmlaboutaddons.recommendations.enabled",
+            false
+          );
           manager.disallowFeature("xpinstall");
         }
       }
@@ -2809,8 +2526,6 @@ export var Policies = {
           "browser.ipProtection.enabled",
           false
         );
-      } else {
-        lazy.PoliciesUtils.setAndLockPref("browser.ipProtection.enabled", true);
       }
     },
   },
@@ -2840,7 +2555,7 @@ export var Policies = {
   LocalFileLinks: {
     onBeforeAddons(manager, param) {
       // If there are existing capabilities, lock them with the policy pref.
-      let policyNames = Services.prefs
+      const policyNames = Services.prefs
         .getCharPref("capability.policy.policynames", "")
         .split(" ");
       policyNames.push("localfilelinks_policy");
@@ -2884,9 +2599,9 @@ export var Policies = {
         } else {
           // LNA is enabled - handle fine-grained controls
           // For backward compatibility, default to true if not specified
-          let blockTrackers =
+          const blockTrackers =
             "BlockTrackers" in param ? param.BlockTrackers : true;
-          let enablePrompting =
+          const enablePrompting =
             "EnablePrompting" in param ? param.EnablePrompting : true;
 
           lazy.PoliciesUtils.setDefaultPref(
@@ -2904,7 +2619,7 @@ export var Policies = {
 
       // Handle SkipDomains separately (can be set independently of Enabled)
       if ("SkipDomains" in param && Array.isArray(param.SkipDomains)) {
-        let skipDomainsValue = param.SkipDomains.join(",");
+        const skipDomainsValue = param.SkipDomains.join(",");
         lazy.PoliciesUtils.setDefaultPref(
           "network.lna.skip-domains",
           skipDomainsValue,
@@ -2920,8 +2635,6 @@ export var Policies = {
     onBeforeAddons(manager, param) {
       if (param) {
         manager.disallowFeature("autoAppUpdateChecking");
-      } else {
-        manager.allowFeature("autoAppUpdateChecking");
       }
     },
   },
@@ -2955,8 +2668,6 @@ export var Policies = {
     onProfileAfterChange(manager, param) {
       if (param) {
         manager.disallowFeature("defaultBookmarks");
-      } else {
-        manager.allowFeature("defaultBookmarks");
       }
     },
   },
@@ -2973,7 +2684,7 @@ export var Policies = {
 
   OfferToSaveLoginsDefault: {
     onBeforeUIStartup(manager, param) {
-      let policies = Services.policies.getActivePolicies();
+      const policies = Services.policies.getActivePolicies();
       if ("OfferToSaveLogins" in policies) {
         lazy.log.error(
           `OfferToSaveLoginsDefault ignored because OfferToSaveLogins is present.`
@@ -2986,7 +2697,7 @@ export var Policies = {
 
   OverrideFirstRunPage: {
     onProfileAfterChange(manager, param) {
-      let url = param ? param : "";
+      const url = param ? param : "";
       lazy.PoliciesUtils.setAndLockPref("startup.homepage_welcome_url", url);
       lazy.PoliciesUtils.setAndLockPref("browser.aboutwelcome.enabled", false);
     },
@@ -2994,7 +2705,7 @@ export var Policies = {
 
   OverridePostUpdatePage: {
     onProfileAfterChange(manager, param) {
-      let url = param ? param.href : "";
+      const url = param ? param.href : "";
       lazy.PoliciesUtils.setAndLockPref("startup.homepage_override_url", url);
       // The pref startup.homepage_override_url is only used
       // as a fallback when the update.xml file hasn't provided
@@ -3015,28 +2726,8 @@ export var Policies = {
           "browser.contextual-password-manager.enabled",
           false
         );
-      } else {
-        lazy.unblockAboutPage(manager, "about:logins");
-        lazy.PoliciesUtils.setAndLockPref(
-          "pref.privacy.disable_button.view_passwords",
-          false
-        );
-        lazy.PoliciesUtils.setAndLockPref(
-          "browser.contextual-password-manager.enabled",
-          true
-        );
       }
       lazy.PoliciesUtils.setAndLockPref("signon.rememberSignons", param);
-    },
-    onRemove(manager, _oldParams) {
-      lazy.unblockAboutPage(manager, "about:logins");
-      lazy.PoliciesUtils.unsetAndUnlockPref(
-        "pref.privacy.disable_button.view_passwords"
-      );
-      lazy.PoliciesUtils.unsetAndUnlockPref("signon.rememberSignons");
-      lazy.PoliciesUtils.unsetAndUnlockPref(
-        "browser.contextual-password-manager.enabled"
-      );
     },
   },
 
@@ -3207,7 +2898,7 @@ export var Policies = {
 
   Preferences: {
     onBeforeAddons(manager, param) {
-      let allowedPrefixes = [
+      const allowedPrefixes = [
         "accessibility.",
         "alerts.",
         "app.update.",
@@ -3288,7 +2979,7 @@ export var Policies = {
         "browser.vpn_promo.disallowed_regions",
       ];
 
-      for (let preference in param) {
+      for (const preference in param) {
         if (blockedPrefs.includes(preference)) {
           lazy.log.error(
             `Unable to set preference ${preference}. Preference not allowed for security reasons.`
@@ -3328,12 +3019,12 @@ export var Policies = {
 
           // Prefs that were previously locked should stay locked,
           // but policy can update the value.
-          let prefWasLocked = Services.prefs.prefIsLocked(preference);
+          const prefWasLocked = Services.prefs.prefIsLocked(preference);
           if (prefWasLocked) {
             Services.prefs.unlockPref(preference);
           }
           try {
-            let prefType =
+            const prefType =
               param[preference].Type || typeof param[preference].Value;
             switch (prefType) {
               case "boolean":
@@ -3400,45 +3091,6 @@ export var Policies = {
     },
   },
 
-  PrintPageTelemetry: {
-    onBeforeAddons(manager, param) {
-      if (param && typeof param === "object") {
-        // Enable/disable print page telemetry
-        if (typeof param.Enabled === "boolean") {
-          lazy.PoliciesUtils.setAndLockPref(
-            "print.enterprise.telemetry.printPage.enabled",
-            param.Enabled
-          );
-        }
-
-        // Set URL logging level
-        if (
-          typeof param.UrlLogging === "string" &&
-          ["full", "domain", "none"].includes(param.UrlLogging)
-        ) {
-          lazy.PoliciesUtils.setAndLockPref(
-            "print.enterprise.telemetry.printPage.urlLogging",
-            param.UrlLogging
-          );
-        }
-      }
-    },
-    onRemove(manager, oldParams) {
-      if (oldParams && typeof oldParams === "object") {
-        if ("Enabled" in oldParams) {
-          lazy.PoliciesUtils.unsetAndUnlockPref(
-            "print.enterprise.telemetry.printPage.enabled"
-          );
-        }
-        if ("UrlLogging" in oldParams) {
-          lazy.PoliciesUtils.unsetAndUnlockPref(
-            "print.enterprise.telemetry.printPage.urlLogging"
-          );
-        }
-      }
-    },
-  },
-
   PrivateBrowsingModeAvailability: {
     onBeforeAddons(manager, param) {
       switch (param) {
@@ -3459,27 +3111,6 @@ export var Policies = {
           );
           break;
         // Private Browsing mode available
-        case 0:
-          break;
-      }
-    },
-    onRemove(manager, oldParams) {
-      switch (oldParams) {
-        // Private Browsing mode was disabled
-        case 1:
-          manager.allowFeature("privatebrowsing");
-          lazy.unblockAboutPage(manager, "about:privatebrowsing");
-          lazy.PoliciesUtils.unsetAndUnlockPref(
-            "browser.privatebrowsing.autostart"
-          );
-          break;
-        // Private Browsing mode was forced
-        case 2:
-          lazy.PoliciesUtils.unsetAndUnlockPref(
-            "browser.privatebrowsing.autostart"
-          );
-          break;
-        // Private Browsing mode was available
         case 0:
           break;
       }
@@ -3518,7 +3149,7 @@ export var Policies = {
   RelaunchRequired: {
     onBeforeUIStartup(_manager, param) {
       let notificationPeriodHours = 24;
-      let restartTimeOfDay = { Hour: 12, Minute: 0 };
+      const restartTimeOfDay = { Hour: 12, Minute: 0 };
       if (
         typeof param.NotificationPeriodHours === "number" &&
         param.NotificationPeriodHours >= 0
@@ -3835,8 +3466,8 @@ export var Policies = {
             "removeSearchEngines",
             JSON.stringify(param.Remove),
             async function () {
-              for (let engineName of param.Remove) {
-                let engine = lazy.SearchService.getEngineByName(engineName);
+              for (const engineName of param.Remove) {
+                const engine = lazy.SearchService.getEngineByName(engineName);
                 if (engine) {
                   try {
                     await lazy.SearchService.removeEngine(
@@ -3941,7 +3572,7 @@ export var Policies = {
 
   SecurityDevices: {
     async _onProfileAfterChangeImpl(manager, param) {
-      let pkcs11db = Cc["@mozilla.org/security/pkcs11moduledb;1"].getService(
+      const pkcs11db = Cc["@mozilla.org/security/pkcs11moduledb;1"].getService(
         Ci.nsIPKCS11ModuleDB
       );
       let securityDevices;
@@ -3949,7 +3580,7 @@ export var Policies = {
         // We're using the new syntax.
         securityDevices = param.Add;
         if (param.Delete) {
-          for (let deviceName of param.Delete) {
+          for (const deviceName of param.Delete) {
             try {
               await pkcs11db.deleteModule(deviceName);
             } catch (e) {
@@ -3966,9 +3597,9 @@ export var Policies = {
       if (!securityDevices) {
         return;
       }
-      for (let deviceName in securityDevices) {
+      for (const deviceName in securityDevices) {
         let foundModule = false;
-        for (let module of await pkcs11db.listModules()) {
+        for (const module of await pkcs11db.listModules()) {
           if (module && module.libName === securityDevices[deviceName]) {
             foundModule = true;
             break;
@@ -4006,20 +3637,27 @@ export var Policies = {
     },
   },
 
+  SecurityLogging: {
+    onBeforeAddons(_manager, param) {
+      lazy.SecurityLoggingPolicy.apply(param);
+    },
+    onRemove(_manager, oldParams) {
+      lazy.SecurityLoggingPolicy.remove(oldParams);
+    },
+  },
+
   ShowHomeButton: {
     onBeforeAddons(manager, param) {
       if (param) {
         manager.disallowFeature("removeHomeButtonByDefault");
-      } else {
-        manager.allowFeature("removeHomeButtonByDefault");
       }
     },
     onAllWindowsRestored(manager, param) {
       if (param) {
-        let homeButtonPlacement =
+        const homeButtonPlacement =
           lazy.CustomizableUI.getPlacementOfWidget("home-button");
         if (!homeButtonPlacement) {
-          let placement =
+          const placement =
             lazy.CustomizableUI.getPlacementOfWidget("forward-button");
           lazy.CustomizableUI.addWidgetToArea(
             "home-button",
@@ -4051,7 +3689,7 @@ export var Policies = {
       }
 
       // This will throw an exception if the domain is not long enough to make a site.
-      let site = Services.eTLD.getBaseDomainFromHost(base);
+      const site = Services.eTLD.getBaseDomainFromHost(base);
       if (site != base) {
         console.warn(
           `SitePolicies: Pattern ${pattern} is too specific. Using *.${site} instead.`
@@ -4063,8 +3701,8 @@ export var Policies = {
 
     validate(params) {
       // The schema will have validated the general structure, we need to validate the patterns
-      for (let param of params) {
-        for (let patterns of [param.Match ?? [], param.Exceptions ?? []]) {
+      for (const param of params) {
+        for (const patterns of [param.Match ?? [], param.Exceptions ?? []]) {
           try {
             patterns.forEach(p => {
               if (p != "*") {
@@ -4081,7 +3719,7 @@ export var Policies = {
     },
 
     featuresForPolicies(policies) {
-      let features = {};
+      const features = {};
 
       if ("DisableJit" in policies) {
         features.jit = !policies.DisableJit;
@@ -4091,15 +3729,19 @@ export var Policies = {
         features.http = !policies.HttpsOnly;
       }
 
+      if ("DisableServiceWorkers" in policies) {
+        features.serviceworkers = !policies.DisableServiceWorkers;
+      }
+
       return features;
     },
 
     onBeforeAddons(manager, params) {
-      let sitePolicies = [];
+      const sitePolicies = [];
 
-      for (let policies of params) {
-        let matches = policies.Match ?? [];
-        let exceptions = policies.Exceptions ?? [];
+      for (const policies of params) {
+        const matches = policies.Match ?? [];
+        const exceptions = policies.Exceptions ?? [];
 
         // If the entire web is an exception then this policy can never apply so
         // ignore it.
@@ -4107,7 +3749,7 @@ export var Policies = {
           continue;
         }
 
-        let exceptionPatterns = exceptions.map(this.intoMatchPattern);
+        const exceptionPatterns = exceptions.map(this.intoMatchPattern);
         let matchPatterns;
 
         if (!matches.length || matches.includes("*")) {
@@ -4153,9 +3795,6 @@ export var Policies = {
           "termsofuse.acceptedDate",
           Date.now().toString()
         );
-      } else {
-        lazy.PoliciesUtils.unsetAndUnlockPref("termsofuse.acceptedVersion");
-        lazy.PoliciesUtils.unsetAndUnlockPref("termsofuse.acceptedDate");
       }
     },
   },
@@ -4228,7 +3867,7 @@ export var Policies = {
 
   TranslateEnabled: {
     onBeforeAddons(manager, param) {
-      let policies = Services.policies.getActivePolicies();
+      const policies = Services.policies.getActivePolicies();
       if (policies.AIControls?.Translations || policies.AIControls?.Default) {
         lazy.log.warn(
           "Ignoring TranslateEnabled policy in favor of AIControls"
@@ -4356,7 +3995,3 @@ export var Policies = {
     },
   },
 };
-
-if (!AppConstants.MOZ_ENTERPRISE) {
-  delete Policies.Sync;
-}

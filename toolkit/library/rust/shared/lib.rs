@@ -32,6 +32,8 @@ extern crate encoding_glue;
 #[cfg(feature = "felt")]
 extern crate felt;
 extern crate fog_control;
+#[cfg(feature = "fontations")]
+extern crate fontations_glue;
 extern crate gecko_profiler;
 extern crate gkrust_utils;
 extern crate harfbuzz_glue;
@@ -40,8 +42,6 @@ extern crate idna_glue;
 extern crate ipdl_utils;
 extern crate jog;
 extern crate jsrust_shared;
-#[cfg(feature = "fontations")]
-extern crate fontations_glue;
 #[cfg(feature = "jxl_decoder")]
 extern crate jxl_decoder;
 extern crate kvstore;
@@ -99,7 +99,6 @@ extern crate localization_ffi;
 extern crate ipcclientcerts;
 extern crate pdf_trust_anchors;
 extern crate qwac_trust_anchors;
-extern crate ssl_tokens_cache;
 extern crate trust_anchors;
 
 #[cfg(any(
@@ -123,6 +122,8 @@ extern crate viaduct_necko;
 
 extern crate gecko_logger;
 extern crate gecko_tracing;
+#[cfg(feature = "with_dbus")]
+extern crate xdg_alerts;
 
 #[cfg(feature = "oxidized_breakpad")]
 extern crate rust_minidump_writer_linux;
@@ -136,6 +137,8 @@ extern crate crash_helper_client;
 #[cfg(feature = "webmidi_midir_impl")]
 extern crate midir_impl;
 
+#[cfg(all(target_os = "windows", feature = "backgroundtaskregistrar"))]
+extern crate backgroundtaskregistrar;
 #[cfg(target_os = "windows")]
 extern crate detect_win32k_conflicts;
 #[cfg(all(target_os = "windows", feature = "shell_windows"))]
