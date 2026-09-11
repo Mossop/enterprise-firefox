@@ -689,16 +689,21 @@ EnterprisePoliciesManager.prototype = {
   /**
    * The build variant key used by "x-compatibility" in policies-schema.json.
    *
-   * @returns {"firefox_enterprise"|"firefox_esr"|"firefox"} variant key
+   * @returns {"firefox_enterprise"|"firefox_esr"|"firefox"|"thunderbird_enterprise"|"thunderbird_esr"|"thunderbird"} variant key
    */
   _currentBuildVariant() {
+    let variant = "firefox";
+    if (AppConstants.MOZ_BUILD_APP != "browser") {
+      variant = "thunderbird";
+    }
+
     if (AppConstants.MOZ_ENTERPRISE) {
-      return "firefox_enterprise";
+      return `${variant}_enterprise`;
     }
     if (AppConstants.IS_ESR) {
-      return "firefox_esr";
+      return `${variant}_esr`;
     }
-    return "firefox";
+    return variant;
   },
 
   /**
