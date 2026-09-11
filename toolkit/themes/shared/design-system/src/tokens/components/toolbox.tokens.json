@@ -23,12 +23,19 @@
         "value": "unset"
       }
     },
-    "nova-gradient": {
+    "gradient": {
       "comment": "This gradient is only used for Nova",
+      "override": true,
       "value": {
-        "default": "linear-gradient(96deg, color-mix({toolbox.background.color.gradient-leading} 50%, transparent) 39.84%, color-mix({toolbox.background.color.gradient-trailing} 50%, transparent) 101.72%)",
-        "nativeTheme": "image(transparent)",
-        "forcedColors": "image(transparent)"
+        "default": "unset",
+        "nova": {
+          "comment": "This linear-gradient cannot be expressed in Figma",
+          "value": {
+            "default": "linear-gradient(96deg, color-mix({toolbox.background.color.gradient-leading} 50%, transparent) 39.84%, color-mix({toolbox.background.color.gradient-trailing} 50%, transparent) 101.72%)",
+            "nativeTheme": "image(transparent)",
+            "forcedColors": "image(transparent)"
+          }
+        }
       }
     }
   },
@@ -45,6 +52,13 @@
         "value": {
           "default": "{toolbox.text.color.@base}",
           "nativeTheme": "-moz-headerbarinactivetext"
+        }
+      },
+      "current": {
+        "comment": "Figma aliases this to toolbox/text/color so designers see a real color, but CSS must use currentColor: the tab inherits --lwt-text-color under an lwtheme and --toolbox-text-color-inactive in a background window, neither of which --toolbox-text-color tracks. Listed in figma-import.mjs's FIGMA_IGNORES so the alias doesn't overwrite this.",
+        "value": "currentColor",
+        "nova": {
+          "value": "currentColor"
         }
       }
     }
