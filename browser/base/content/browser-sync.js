@@ -1184,6 +1184,7 @@ const AVATAR_MENU_ONLY_PROFILES_EVENT_TYPES = new Set([
 
 var gSync = {
   _initialized: false,
+  _lastUIState: null,
   _isCurrentlySyncing: false,
   // The last sync start time. Used to calculate the leftover animation time
   // once syncing completes (bug 1239042).
@@ -1261,6 +1262,18 @@ var gSync = {
     return this.getSendTabTargets().length === 0;
   },
 
+  // The Sync policy disallows the sync feature to pin sync's on/off state, not
+  // to make sync unavailable, so only the UI that changes it is a dead end.
+  get isSyncStateLocked() {
+    return AppConstants.MOZ_ENTERPRISE && !Services.policies.isAllowed("sync");
+  },
+
+  get isSyncTabsLocked() {
+    return (
+      AppConstants.MOZ_ENTERPRISE && !Services.policies.isAllowed("sync-tabs")
+    );
+  },
+
   // Returns the call to action ("signin", "turnonsync", or "connectdevice") for
   // showing the remote tabs promo, or null when the promo should be hidden.
   // Disabled `requiredEngines` also select "turnonsync" when provided.
@@ -1272,14 +1285,14 @@ var gSync = {
     switch (state.status) {
       case UIState.STATUS_NOT_CONFIGURED:
       case UIState.STATUS_NOT_VERIFIED:
-        return "signin";
+        return this.isSyncStateLocked ? null : "signin";
       case UIState.STATUS_SIGNED_IN: {
         const engineDisabled = requiredEngines.some(
           engine =>
             !Services.prefs.getBoolPref(`services.sync.engine.${engine}`, true)
         );
         if (!state.syncEnabled || engineDisabled) {
-          return "turnonsync";
+          return this.isSyncStateLocked ? null : "turnonsync";
         }
         // A null list means it's still loading, so defer to the existing
         // synced-tabs menuitem rather than promoting "connect a device". The
@@ -2646,38 +2659,59 @@ var gSync = {
     appMenuStatus.removeAttribute("tooltiptext");
   },
 
+  /**
+   * Re-gates the Tools menu sync items when the menu opens. The Sync policy can
+   * be applied or removed while the window is open, and nothing else recomputes
+   * these items when it changes.
+   */
+  refreshSyncMenuItems() {
+    // Windows we never init in, like the macOS hidden window, have no app menu
+    // views for updateState to touch; when FxA is disabled onFxaDisabled() has
+    // already hidden these items.
+    if (!this._initialized) {
+      return;
+    }
+    // UIState.get() returns its default until the first refresh resolves.
+    this.updateState(this._lastUIState ?? UIState.get());
+  },
+
   updateState(state) {
-    for (let [shown, menuId, boxId] of [
+    this._lastUIState = state;
+    for (let [shown, menuId, boxId, changesSyncState] of [
       [
         state.status == UIState.STATUS_NOT_CONFIGURED,
         "sync-setup",
         "PanelUI-remotetabs-setupsync",
+        true,
       ],
       [
         state.status == UIState.STATUS_SIGNED_IN && !state.syncEnabled,
         "sync-enable",
         "PanelUI-remotetabs-syncdisabled",
+        true,
       ],
       [
         state.status == UIState.STATUS_LOGIN_FAILED,
         "sync-reauthitem",
         "PanelUI-remotetabs-reauthsync",
+        false,
       ],
       [
         state.status == UIState.STATUS_NOT_VERIFIED,
         "sync-unverifieditem",
         "PanelUI-remotetabs-unverified",
+        false,
       ],
       [
         state.status == UIState.STATUS_SIGNED_IN && state.syncEnabled,
         "sync-syncnowitem",
         "PanelUI-remotetabs-main",
+        false,
       ],
     ]) {
-      document.getElementById(menuId).hidden = PanelMultiView.getViewNode(
-        document,
-        boxId
-      ).hidden = !shown;
+      document.getElementById(menuId).hidden =
+        !shown || (changesSyncState && this.isSyncStateLocked);
+      PanelMultiView.getViewNode(document, boxId).hidden = !shown;
     }
   },
 
