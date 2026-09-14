@@ -1,20 +1,12 @@
 /* Any copyright is dedicated to the Public Domain.
    http://creativecommons.org/publicdomain/zero/1.0/ */
 
-// On an enterprise build a profile's user.js cannot make the AutoConfig vendor
-// check fail and disarm the administrator's configuration.
-
-const { AppConstants } = ChromeUtils.importESModule(
-  "resource://gre/modules/AppConstants.sys.mjs"
-);
+// To prevent the administrator's configuration from being disarmed, a
+// profile's user.js should not be able to make the AutoConfig vendor check
+// fail through general.config.vendor or general.config.filename. nsReadConfig
+// drops the profile's values before evaluating the AutoConfig file.
 
 function run_test() {
-  if (!AppConstants.MOZ_ENTERPRISE) {
-    info("Skipping on non-enterprise build (MOZ_ENTERPRISE is not set)");
-    ok(true, "skipped: not an enterprise build");
-    return;
-  }
-
   let prefs = Services.prefs.getBranch(null);
   let defPrefs = Services.prefs.getDefaultBranch(null);
 
@@ -57,6 +49,7 @@ function run_test() {
   );
   // What a hostile user.js would set.
   prefs.setStringPref("general.config.vendor", "notautoconfig");
+  prefs.setStringPref("general.config.filename", "notautoconfig.cfg");
 
   Services.obs.notifyObservers(
     Services.prefs,

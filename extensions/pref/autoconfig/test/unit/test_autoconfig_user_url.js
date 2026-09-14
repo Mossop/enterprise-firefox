@@ -1,22 +1,12 @@
 /* Any copyright is dedicated to the Public Domain.
    http://creativecommons.org/publicdomain/zero/1.0/ */
 
-// On an enterprise build a profile's user.js cannot point AutoConfig at
-// another file through autoadmin.global_config_url. Once the shipped
-// firefox.cfg has been evaluated the remaining AutoConfig inputs are never
-// consulted, so the user-set URL is never fetched.
-
-const { AppConstants } = ChromeUtils.importESModule(
-  "resource://gre/modules/AppConstants.sys.mjs"
-);
+// To prevent the administrator's configuration from being redirected, a
+// profile's user.js should not be able to point AutoConfig at another file
+// through autoadmin.global_config_url. The URL is only honored as a default
+// pref, so the user-set URL is never fetched.
 
 function run_test() {
-  if (!AppConstants.MOZ_ENTERPRISE) {
-    info("Skipping on non-enterprise build (MOZ_ENTERPRISE is not set)");
-    ok(true, "skipped: not an enterprise build");
-    return;
-  }
-
   let prefs = Services.prefs.getBranch(null);
 
   let greD = Services.dirsvc.get("GreD", Ci.nsIFile);
@@ -66,6 +56,10 @@ function run_test() {
     "cfg",
     prefs.getStringPref("_autoconfig_.test.admin"),
     "the shipped AutoConfig file is applied"
+  );
+  ok(
+    !prefs.prefHasUserValue("autoadmin.global_config_url"),
+    "the user-set autoadmin.global_config_url is dropped"
   );
 
   // nsAutoConfig would fetch the remote file on this notification.
