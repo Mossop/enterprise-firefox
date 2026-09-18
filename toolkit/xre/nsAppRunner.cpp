@@ -2953,10 +2953,10 @@ static nsresult ProfileEncryptionMismatchDialog(const char* aMsgKey,
 
 #if defined(MOZ_ENTERPRISE)
 // Returns NS_OK only if |aDir| is a private per-user directory: a directory
-// (not a symlink) owned by the current user with mode 0700. Unix-only; a no-op
-// elsewhere, where the OS temporary directory is already per-user.
+// (not a symlink) owned by the current user with mode 0700. Desktop-Linux only;
+// a no-op elsewhere, where the OS temporary directory is already per-user.
 static nsresult ValidateFeltScratchDir(nsIFile* aDir) {
-#  if defined(XP_UNIX)
+#  if defined(XP_LINUX) && !defined(ANDROID)
   nsAutoCString path;
   MOZ_TRY(aDir->GetNativePath(path));
 
@@ -3666,13 +3666,14 @@ static nsresult SelectProfile(nsToolkitProfileService* aProfileSvc,
         // many (thousands) of existing directories, which is unlikely to
         // happen.
         MOZ_TRY(file->CreateUnique(nsIFile::DIRECTORY_TYPE, 0700));
-      } else if (NS_FAILED(ValidateFeltScratchDir(file))) {
-        // Only reuse an existing scratch directory if it is a private per-user
-        // directory.
+      }
+
+      // Validate the directory whether it was just created or already existed.
+      if (NS_FAILED(ValidateFeltScratchDir(file))) {
         Output(true,
                "Error: refusing to use the Felt UI scratch profile: it is not "
                "a private directory owned by the current user.\n");
-        return NS_ERROR_ABORT;
+        return NS_ERROR_FILE_ACCESS_DENIED;
       }
 
       nsCOMPtr<nsIFile> localDir = file;
@@ -6091,6 +6092,11 @@ int XREMain::XRE_mainStartup(bool* aExitFlag) {
   if (rv == NS_ERROR_LAUNCHED_CHILD_PROCESS || rv == NS_ERROR_ABORT) {
     *aExitFlag = true;
     return 0;
+  }
+
+  if (rv == NS_ERROR_FILE_ACCESS_DENIED) {
+    // SelectProfile already reported the reason; exit non-zero.
+    return 1;
   }
 
   if (NS_FAILED(rv)) {
