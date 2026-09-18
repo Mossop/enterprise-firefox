@@ -46,9 +46,6 @@
     /* 13px in-content, unset in platform (we want to avoid going too small when the root font size is already quite small) */
     --font-size-small: unset;
 
-    /** info-bar **/
-    --info-bar-border-color: var(--toolbarseparator-color);
-
     /** input **/
     --input-text-background-color: Field;
     --input-text-color: FieldText;
@@ -122,6 +119,9 @@
       --color-accent-primary-active: color-mix(in srgb, black 20%, var(--color-accent-primary));
       --color-accent-primary-selected: SelectedItem;
 
+      /** info-bar **/
+      --info-bar-border-color: var(--border-color-deemphasized);
+
       /** input **/
       --input-text-background-color: Field;
 
@@ -132,6 +132,9 @@
 
       /** popup **/
       --popup-border-color: var(--border-color-deemphasized);
+
+      /** sidebar **/
+      --sidebar-border-color: -moz-sidebarborder;
 
       /** text-color **/
       --text-color: currentColor;
@@ -153,6 +156,7 @@
       --toolbarbutton-icon-fill-attention: AccentColor;
 
       /** toolbox **/
+      --toolbox-background-color: -moz-headerbar;
       --toolbox-background-color-inactive: -moz-headerbarinactive;
       /* This gradient is only used for Nova */
       --toolbox-background-gradient: image(transparent);
@@ -187,9 +191,6 @@
       --color-accent-primary-hover: light-dark(var(--color-blue-70), var(--color-cyan-20));
       --color-accent-primary-active: light-dark(var(--color-blue-80), var(--color-cyan-10));
       --color-accent-primary-selected: light-dark(var(--color-blue-60), var(--color-cyan-30));
-
-      /** info-bar **/
-      --info-bar-border-color: light-dark(var(--color-violet-desaturated-20), var(--color-gray-60));
 
       /** input **/
       --input-text-background-color: light-dark(var(--color-white), #42414d);
@@ -257,6 +258,9 @@
         --color-accent-primary-active: light-dark(var(--color-violet-70), var(--color-violet-10));
         --color-accent-primary-selected: var(--button-background-color-primary-active);
 
+        /** info-bar **/
+        --info-bar-border-color: light-dark(var(--color-violet-desaturated-20), var(--color-gray-60));
+
         /** input **/
         --input-text-background-color: var(--background-color-box);
 
@@ -268,11 +272,14 @@
         /** popup **/
         --popup-border-color: var(--border-color-deemphasized);
 
+        /** sidebar **/
+        --sidebar-border-color: var(--chrome-content-separator-color);
+
         /** text-color **/
         --text-color: light-dark(var(--color-violet-desaturated-90), var(--color-violet-desaturated-0));
 
         /** toolbar **/
-        --toolbar-background-color: var(--background-color-box);
+        --toolbar-background-color: light-dark(rgba(255, 255, 255, 0.4), rgba(0, 0, 0, 0.2));
         --toolbar-field-background-color: var(--toolbar-background-color);
         --toolbar-field-background-color-focus: var(--background-color-box);
         --toolbar-field-border-color: light-dark(var(--color-gray-20), var(--color-gray-60));
@@ -287,6 +294,7 @@
         --toolbarbutton-icon-fill-attention: var(--color-accent-primary);
 
         /** toolbox **/
+        --toolbox-background-color: light-dark(var(--color-white), var(--color-gray-70));
         --toolbox-background-color-inactive: transparent;
         /* This gradient is only used for Nova */
         --toolbox-background-gradient: linear-gradient(
