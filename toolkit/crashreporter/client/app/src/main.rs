@@ -274,7 +274,7 @@ fn try_run(config: &mut Arc<Config>) -> anyhow::Result<bool> {
             // from the crash submission URL (the `ServerURL` annotation)
             // resolved by `load_extra_file` above.
             #[cfg(all(not(mock), feature = "enterprise"))]
-            options.set_server_url(
+            options.set_server_endpoint(
                 enterprise_prefs::console_glean_url(
                     config.report_url.as_ref().and_then(|s| s.to_str()),
                     config.app_data_dir.as_deref(),
