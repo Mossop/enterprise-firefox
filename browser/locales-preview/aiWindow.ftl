@@ -55,6 +55,17 @@ ai-tasks-monitor-created-notification-body =
        *[other] Now watching { $site } and { $extraCount } other pages. You’ll get a notification like this one when there’s a match.
     }
 
+# Desktop notification shown when a monitor pauses itself, either because it
+# went a long time without its condition being met or because it reached its
+# maximum lifetime. The notification title is the monitor's name.
+# Variables:
+#   $days (Number) - Number of days the monitor ran without a match
+ai-tasks-monitor-expired-notification-body-no-match = This task was automatically paused after { $days } days without a match. You can resume it anytime.
+# Variables:
+#   $days (Number) - Number of days the monitor has been running
+ai-tasks-monitor-expired-notification-body-max-age = This task was automatically paused after { $days } days. You can resume it anytime.
+ai-tasks-monitor-expired-notification-resume = Resume
+
 # Smart Window Alerts
 # This file contains localized strings for the Smart Window alerts feature,
 # which allows users to create alerts to monitor webpages for changes.
@@ -148,12 +159,10 @@ ai-tasks-alert-watching-pages = { $count ->
 ai-tasks-alert-error-name-required = Enter a name for this task.
 # Shown under the "Notify me when" field when it is left empty on submit
 ai-tasks-alert-error-condition-required = Enter what you want to watch for.
-# Shown under the page field when an address only looks like it is missing its
-# scheme, e.g. "example.com"
-ai-tasks-alert-error-url-scheme = Add https:// or http:// to start of the URL.
-# Shown under the page field for input that cannot be parsed as a URL at all
-ai-tasks-alert-error-invalid-url = Enter a full URL, starting with https:// or http://
-ai-tasks-alert-error-duplicate-url = This URL has already been added
+# Shown under the page field for input that isn't a web address. A missing
+# scheme is filled in with https automatically
+ai-tasks-alert-error-invalid-url = Enter a valid URL.
+ai-tasks-alert-error-duplicate-url = This URL has already been added.
 # Shown under the page field when submitting with no pages added
 ai-tasks-alert-error-no-pages = Add at least one page to watch.
 # Variables:

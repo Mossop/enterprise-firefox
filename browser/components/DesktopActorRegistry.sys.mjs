@@ -290,7 +290,7 @@ let JSWINDOWACTORS = {
         "AITab:OpenLink": { wantUntrusted: true },
       },
     },
-    matches: ["about:aitab", "about:aitab?*"],
+    matches: ["about:smartpage", "about:smartpage?*"],
     remoteTypes: ["privilegedabout"],
     enablePreference: "browser.smartwindow.aitab.enabled",
   },
@@ -325,10 +325,12 @@ let JSWINDOWACTORS = {
 
   BackupUI: {
     parent: {
-      esModuleURI: "resource:///actors/BackupUIParent.sys.mjs",
+      esModuleURI:
+        "moz-src:///browser/components/backup/actors/BackupUIParent.sys.mjs",
     },
     child: {
-      esModuleURI: "resource:///actors/BackupUIChild.sys.mjs",
+      esModuleURI:
+        "moz-src:///browser/components/backup/actors/BackupUIChild.sys.mjs",
       events: {
         "BackupUI:InitWidget": { wantUntrusted: true },
         "BackupUI:TriggerCreateBackup": { wantUntrusted: true },
