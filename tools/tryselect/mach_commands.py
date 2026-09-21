@@ -32,6 +32,8 @@ schedules far too many tasks and some decision tasks fail on missing scopes.
 See bug 2068074.
 
 Use an explicit selector such as `mach try fuzzy` instead.
+
+A good default fuzzy selector would be "'marionette-enterprise".
 """.strip()
 
 
