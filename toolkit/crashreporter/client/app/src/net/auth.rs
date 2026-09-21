@@ -42,13 +42,14 @@ mod test {
         fs::{MockFS, MockFiles},
         mock,
     };
+    use mozbuild::config::MOZ_APP_NAME;
 
     const CONSOLE_URL: &str = "https://console.example.com/api/browser/crash-reports/submit";
 
     fn run_with_env(value: Option<&str>, url: &str) -> Option<(String, String)> {
         let files = MockFiles::new();
         files.add_dir("work_dir").add_file(
-            "work_dir/firefox.cfg",
+            format!("work_dir/{}.cfg", MOZ_APP_NAME),
             crate::test::enterprise_autoconfig("https://console.example.com"),
         );
 
