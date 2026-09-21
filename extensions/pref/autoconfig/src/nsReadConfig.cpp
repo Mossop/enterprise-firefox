@@ -8,6 +8,7 @@
 #include "mozilla/Logging.h"
 #include "mozilla/Components.h"
 #include "mozilla/HelperMacros.h"
+#include "mozilla/Preferences.h"
 #if defined(MOZ_ENTERPRISE)
 #  include "mozilla/Printf.h"
 #  ifdef MOZ_BACKGROUNDTASKS
@@ -161,6 +162,21 @@ NS_IMETHODIMP nsReadConfig::Observe(nsISupports* aSubject, const char* aTopic,
  */
 static const char* gBlockedConfigs[] = {"dsengine.cfg"};
 
+/**
+ * Prefs whose user values are cleared before the .cfg is evaluated, so that a
+ * profile cannot fail the vendor check or redirect nsAutoConfig. prefs.js and
+ * user.js are already parsed at this point (see the InitializeUserPrefs,
+ * UpdateCurrentProfile, InitializeJSContext and FinishInitializingUserPrefs
+ * call chain in XREMain::XRE_mainRun (nsAppRunner.cpp)). The .cfg can still
+ * set them with pref().
+ */
+static const char* const gAutoConfigInputPrefs[] = {
+    "general.config.filename",      "general.config.vendor",
+    "autoadmin.global_config_url",  "autoadmin.offline_failover",
+    "autoadmin.append_emailaddr",   "autoadmin.refresh_interval",
+    "autoadmin.failover_to_cached",
+};
+
 nsresult nsReadConfig::readConfigFile() {
   nsresult rv = NS_OK;
   nsAutoCString lockFileName;
@@ -190,6 +206,10 @@ nsresult nsReadConfig::readConfigFile() {
 
   MOZ_LOG(MCD, LogLevel::Debug,
           ("general.config.filename = %s\n", lockFileName.get()));
+
+  for (const char* prefName : gAutoConfigInputPrefs) {
+    Preferences::ClearUser(prefName);
+  }
 
   for (size_t index = 0, len = std::size(gBlockedConfigs); index < len;
        ++index) {
