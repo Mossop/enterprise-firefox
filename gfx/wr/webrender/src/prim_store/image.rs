@@ -11,7 +11,7 @@ use crate::command_buffer::CommandBufferIndex;
 use crate::pattern::image::ImagePattern;
 use crate::quad::{QuadDescriptor, QuadTransformState};
 use crate::quad_clip::QuadClipStack;
-use crate::frame_builder::{FrameBuildingContext, FrameBuildingState, PictureContext};
+use crate::frame_builder::{FrameBuildingContext, FrameBuildingState};
 use crate::intern::{Handle as InternHandle, InternDebug, Internable};
 use crate::internal_types::LayoutPrimitiveInfo;
 use crate::prim_store::{
@@ -173,7 +173,6 @@ pub fn prepare_image_quads(
     clips: &QuadClipStack,
     quad_transform: &mut QuadTransformState,
     frame_context: &FrameBuildingContext,
-    pic_context: &PictureContext,
     targets: &[CommandBufferIndex],
     frame_state: &mut FrameBuildingState,
     scratch: &mut PrimitiveScratchBuffer,
@@ -297,8 +296,7 @@ pub fn prepare_image_quads(
                     &None,
                     clips,
                     quad_transform,
-                    frame_context,
-                    pic_context,
+                    frame_context.spatial_tree,
                     targets,
                     frame_state,
                     scratch,
@@ -319,8 +317,7 @@ pub fn prepare_image_quads(
                 &None,
                 clips,
                 quad_transform,
-                frame_context,
-                pic_context,
+                frame_context.spatial_tree,
                 targets,
                 frame_state,
                 scratch,
@@ -332,11 +329,10 @@ pub fn prepare_image_quads(
             // thing.
             let active_rect = image_properties.visible_rect;
             let visible_rect = compute_surface_visible_rect(
-                &frame_state.surfaces[pic_context.surface_index.0],
+                &clips.surface_clip_rect(),
                 clips.coverage_rect(),
-                quad_transform.prim_spatial_node_index(),
+                quad_transform,
                 &tight_clip_rect,
-                frame_context.spatial_tree,
             );
 
             let effective_stretch_size = image_data.stretch_size.resolve(prim_rect);
@@ -395,8 +391,7 @@ pub fn prepare_image_quads(
                         &None,
                         clips,
                         quad_transform,
-                        frame_context,
-                        pic_context,
+                        frame_context.spatial_tree,
                         targets,
                         frame_state,
                         scratch,
