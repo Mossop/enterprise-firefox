@@ -128,8 +128,7 @@ NS_IMETHODIMP nsReadConfig::Observe(nsISupports* aSubject, const char* aTopic,
       }
       nsCOMPtr<nsIAppStartup> appStartup = components::AppStartup::Service();
       if (appStartup) {
-        bool userAllowedQuit = true;
-        appStartup->Quit(nsIAppStartup::eForceQuit, 0, &userAllowedQuit);
+        appStartup->Quit(nsIAppStartup::eForceQuit, 0);
       }
 #else
       // Don't show error alerts if the sandbox is enabled, just show
@@ -146,8 +145,7 @@ NS_IMETHODIMP nsReadConfig::Observe(nsISupports* aSubject, const char* aTopic,
           nsCOMPtr<nsIAppStartup> appStartup =
               components::AppStartup::Service();
           if (appStartup) {
-            bool userAllowedQuit = true;
-            appStartup->Quit(nsIAppStartup::eAttemptQuit, 0, &userAllowedQuit);
+            appStartup->Quit(nsIAppStartup::eAttemptQuit, 0);
           }
         }
       }

@@ -672,7 +672,6 @@ linux64-devedition/opt:
             - builds/releng_base_linux_64_builds.py
             - taskcluster_nightly.py
         extra-config:
-            stage_platform: 'linux64-devedition'
             max_build_output_timeout: 3600
         script: "mozharness/scripts/fx_desktop_build.py"
         secrets: true
@@ -1957,7 +1956,6 @@ linux64-aarch64-devedition/opt:
             - builds/releng_base_linux_64_builds.py
             - taskcluster_nightly.py
         extra-config:
-            stage_platform: 'linux64-aarch64-devedition'
             max_build_output_timeout: 3600
             extra_mozconfig_content:
                 - ac_add_options --target=aarch64

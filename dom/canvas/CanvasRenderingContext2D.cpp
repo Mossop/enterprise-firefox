@@ -1877,6 +1877,7 @@ bool CanvasRenderingContext2D::EnsureTarget(ErrorResult& aError,
 void CanvasRenderingContext2D::SetInitialState() {
   // Set up the initial canvas defaults
   mPathBuilder = nullptr;
+  mRecycledPathBuilder = nullptr;
   mPath = nullptr;
   mPathPruned = false;
   mPathTransform = Matrix();
@@ -3550,8 +3551,16 @@ void CanvasRenderingContext2D::StrokeRect(double aX, double aY, double aW,
 //
 
 void CanvasRenderingContext2D::BeginPath() {
-  mPath = nullptr;
-  mPathBuilder = nullptr;
+  if (mPathBuilder) {
+    mRecycledPathBuilder = std::move(mPathBuilder);
+  } else {
+    mPathBuilder = nullptr;
+  }
+  if (mPath && mPath->hasOneRef() && mRecycledPathBuilder) {
+    mRecycledPathBuilder->RecyclePath(mPath.forget());
+  } else {
+    mPath = nullptr;
+  }
   mPathPruned = false;
 }
 
@@ -3646,34 +3655,6 @@ void CanvasRenderingContext2D::StrokeImpl(const gfx::Path& aPath) {
 
 void CanvasRenderingContext2D::Stroke() {
   mFeatureUsage |= CanvasFeatureUsage::Stroke;
-
-  if (mPathBuilder && !mPath && !mPathPruned && !mPathTransformDirty &&
-      IsTargetValid()) {
-    Maybe<Path::Circle> circle = mPathBuilder->AsCircle();
-    Maybe<Path::Line> line = circle ? Nothing() : mPathBuilder->AsLine();
-    if ((circle && circle->closed) || line) {
-      if (!NeedToCalculateBounds()) {
-        const ContextState& state = CurrentState();
-        StrokeOptions strokeOptions(
-            state.lineWidth, CanvasToGfx(state.lineJoin),
-            CanvasToGfx(state.lineCap), state.miterLimit, state.dash.Length(),
-            state.dash.Elements(), state.dashOffset);
-        if (circle) {
-          mTarget->StrokeCircle(
-              circle->origin, circle->radius,
-              CanvasGeneralPattern().ForStyle(this, Style::STROKE, mTarget),
-              strokeOptions, DrawOptions(state.globalAlpha, state.op));
-        } else {
-          mTarget->StrokeLine(
-              line->origin, line->destination,
-              CanvasGeneralPattern().ForStyle(this, Style::STROKE, mTarget),
-              strokeOptions, DrawOptions(state.globalAlpha, state.op));
-        }
-        Redraw();
-        return;
-      }
-    }
-  }
 
   EnsureTargetAndUserSpacePath();
   if (!IsTargetValid()) {
@@ -4164,7 +4145,8 @@ bool CanvasRenderingContext2D::EnsureWritablePath() {
       mPathBuilder = mTarget->CreatePathBuilder(fillRule);
     }
   } else {
-    mPathBuilder = Path::ToBuilder(mPath.forget(), fillRule);
+    mPathBuilder = Path::ToBuilder(mPath.forget(), fillRule,
+                                   mRecycledPathBuilder.forget());
   }
   return true;
 }
@@ -4172,10 +4154,8 @@ bool CanvasRenderingContext2D::EnsureWritablePath() {
 already_AddRefed<PathBuilder>
 CanvasRenderingContext2D::CreateOrRecyclePathBuilder(FillRule aFillRule) {
   if (mRecycledPathBuilder) {
-    if (mRecycledPathBuilder->Reset(aFillRule)) {
-      return mRecycledPathBuilder.forget();
-    }
-    mRecycledPathBuilder = nullptr;
+    mRecycledPathBuilder->Reset(aFillRule);
+    return mRecycledPathBuilder.forget();
   }
   return Factory::CreatePathBuilder(mPathType, aFillRule);
 }
@@ -4210,12 +4190,18 @@ void CanvasRenderingContext2D::EnsureUserSpacePath(
   if (mPathBuilder) {
     EnsureCapped();
     RefPtr<PathBuilder> builder = mPathBuilder.forget();
+    if (builder->GetFillRule() != fillRule) {
+      builder->SetFillRule(fillRule);
+    }
     mPath = builder->Finish();
     mRecycledPathBuilder = std::move(builder);
   }
 
   if (mPath && mPath->GetFillRule() != fillRule) {
-    Path::SetFillRule(mPath, fillRule);
+    RefPtr<PathBuilder> builder = Path::ToBuilder(
+        mPath.forget(), fillRule, mRecycledPathBuilder.forget());
+    mPath = builder->Finish();
+    mRecycledPathBuilder = std::move(builder);
   }
 
   NS_ASSERTION(mPath, "mPath should exist");
@@ -4223,9 +4209,10 @@ void CanvasRenderingContext2D::EnsureUserSpacePath(
 
 void CanvasRenderingContext2D::TransformCurrentPath(const Matrix& aTransform) {
   if (mPathBuilder) {
-    mPathBuilder = Path::ToBuilder(mPathBuilder->Finish(), aTransform);
+    mPathBuilder->Transform(aTransform);
   } else if (mPath) {
-    mPathBuilder = Path::ToBuilder(mPath.forget(), aTransform);
+    mPathBuilder = Path::ToBuilder(mPath.forget(), aTransform,
+                                   mRecycledPathBuilder.forget());
   }
 }
 
@@ -4500,6 +4487,18 @@ bool CanvasRenderingContext2D::SetFontInternalDisconnected(
     fontFaceSetImpl->FlushUserFontSet();
   }
 
+  auto& state = CurrentState();
+
+  // The fontGroup may be stale, which we can check by comparing the
+  // visibility provider set on its creation against the current
+  // visibility provider. Use this opportunity to destroy the old
+  // fontGroup so we can create a new one later and store it in the
+  // cache.
+  if (state.fontGroup &&
+      state.fontGroup->GetFontVisibilityProvider() != mOffscreenCanvas) {
+    state.fontGroup = nullptr;
+  }
+
   // Try to short-circuit the case where the exact same font is being re-
   // specified, and no other relevant properties have changed.
   if (FontIsUnchanged(aFont, fontFaceSetImpl)) {
@@ -4511,7 +4510,6 @@ bool CanvasRenderingContext2D::SetFontInternalDisconnected(
     mFontGroupCache = MakeUnique<FontGroupCache>();
   }
 
-  auto& state = CurrentState();
   FontGroupCacheKey key(
       aFont, state.resolvedFontLang, state.fontWidth, state.fontVariantCaps,
       state.fontKerning,
@@ -5572,8 +5570,26 @@ gfxFontGroup* CanvasRenderingContext2D::GetCurrentFontStyle() {
   if (currentFont.IsEmpty()) {
     currentFont = kDefaultFontStyle;
   }
-  if (!SetFontInternal(currentFont, err) || err.Failed()) {
-    err.SuppressException();
+
+  bool fontWasSet = SetFontInternal(currentFont, err) && !err.Failed();
+  err.SuppressException();
+  // SetFontInternal may flush and run script, which could change or
+  // destroy the current PresShell.
+  if (GetPresShell() != presShell || (presShell && presShell->IsDestroying())) {
+    // We can't rely on the cached fontGroup (which uses the old PresShell).
+    // Mark fontWasSet false so we create the fontGroup, and clear out the
+    // possibly stale pointers we use to create a new fontGroup.
+    fontWasSet = false;
+    presShell = GetPresShell();
+    presContext = presShell ? presShell->GetPresContext() : nullptr;
+    if (presContext) {
+      visProvider = presContext;
+    } else {
+      visProvider = mOffscreenCanvas;
+    }
+  }
+
+  if (!fontWasSet) {
     // XXX Should we get a default lang from the prescontext or something?
     nsAtom* language = nsGkAtoms::x_western;
     bool explicitLanguage = false;
@@ -6855,12 +6871,6 @@ void CanvasRenderingContext2D::EnsureErrorTarget() {
   MOZ_ASSERT(errorTarget, "Failed to allocate the error target!");
 
   sErrorTarget.set(errorTarget.forget().take());
-}
-
-void CanvasRenderingContext2D::FillRuleChanged() {
-  if (mPath) {
-    mPathBuilder = Path::ToBuilder(mPath.forget(), CurrentState().fillRule);
-  }
 }
 
 void CanvasRenderingContext2D::PutImageData(ImageData& aImageData, int32_t aDx,

@@ -3524,6 +3524,17 @@ static ReturnAbortOnError ShowEnterpriseConsoleSetup(
 }
 #endif
 
+// Both profile dialogs relaunch Firefox to start the chosen profile, and macOS
+// hands an ASWebAuthenticationSession request to the process it launched rather
+// than to the relaunched one, so showing a dialog would drop the request.
+static bool ShouldSkipProfileDialogForWebAuth() {
+#if defined(XP_MACOSX) && defined(NIGHTLY_BUILD)
+  return WasLaunchedByAuthenticationServices();
+#else
+  return false;
+#endif
+}
+
 static bool gDoMigration = false;
 static bool gDoProfileReset = false;
 constinit static nsCOMPtr<nsIToolkitProfile> gResetOldProfile;
@@ -6274,7 +6285,9 @@ int XREMain::XRE_mainStartup(bool* aExitFlag) {
   // We only ever show the profile selector if a specific profile wasn't chosen
   // via command line arguments or environment variables.
   if (wasDefaultSelection) {
-    if (!mProfileSvc->GetStartWithLastProfile()) {
+    if (ShouldSkipProfileDialogForWebAuth()) {
+      rv = NS_OK;
+    } else if (!mProfileSvc->GetStartWithLastProfile()) {
       // First check the old style profile manager
       rv = ShowProfileManager(mProfileSvc, mNativeApp);
     } else if (profile && profile->GetShowProfileSelector()) {
@@ -7128,8 +7141,7 @@ nsresult XREMain::XRE_mainRun() {
       // Check if we're running from a DMG or an app translocated location and
       // allow the user to install to the Applications directory.
       if (MacRunFromDmgUtils::MaybeInstallAndRelaunch()) {
-        bool userAllowedQuit = true;
-        appStartup->Quit(nsIAppStartup::eForceQuit, 0, &userAllowedQuit);
+        appStartup->Quit(nsIAppStartup::eForceQuit, 0);
       }
 #  endif
 #endif
