@@ -14,13 +14,7 @@ sys.path.append(os.path.dirname(__file__))
 from felt_tests import FeltTests
 
 
-class FeltStartsBrowserExternalLink(FeltTests):
-    def test_browser_external_link(self):
-        self.run_felt_base()
-        self._external_link = f"http://localhost:{self.console_port}/ping"
-        self.run_felt_browser_started()
-        self.run_felt_open_external_link()
-
+class BaseBrowserExternalLink(FeltTests):
     def run_felt_browser_started(self):
         self.connect_child_browser()
 
@@ -78,6 +72,14 @@ class FeltStartsBrowserExternalLink(FeltTests):
         self.check_has_external_link_tab()
         self._external_link = "about:logo"
         self.check_has_external_link_tab()
+
+
+class FeltStartsBrowserExternalLink(BaseBrowserExternalLink):
+    def test_browser_external_link(self):
+        self.run_felt_base()
+        self._external_link = f"http://localhost:{self.console_port}/ping"
+        self.run_felt_browser_started()
+        self.run_felt_open_external_link()
 
     def test_browser_pending_external_link(self):
         self._external_link = "about:welcome"
