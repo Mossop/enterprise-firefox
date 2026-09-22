@@ -27,6 +27,7 @@ from base_test import EnterpriseTestsBase
 # bare launch performs GTK display setup before profile selection on Linux, so it
 # requires a display -- provided by the marionette-enterprise CI environment.
 REFUSAL_MESSAGE = "refusing to use the Felt UI scratch profile"
+LAUNCH_TIMEOUT_SECONDS = 10
 
 
 class FeltUIScratchProfileRefuses(EnterpriseTestsBase):
@@ -70,11 +71,15 @@ class FeltUIScratchProfileRefuses(EnterpriseTestsBase):
             start_new_session=True,
         )
         try:
-            output, _ = proc.communicate(timeout=90)
+            output, _ = proc.communicate(timeout=LAUNCH_TIMEOUT_SECONDS)
         except subprocess.TimeoutExpired:
             os.killpg(os.getpgid(proc.pid), signal.SIGKILL)
-            proc.communicate()
-            raise
+            output, _ = proc.communicate()
+            raise AssertionError(
+                f"The bare Felt UI launch did not exit within "
+                f"{LAUNCH_TIMEOUT_SECONDS}s and was killed. It should have "
+                f"refused the scratch profile and exited 1. Output:\n{output}"
+            )
         self._logger.info(f"Bare launch exited: {proc.returncode}")
         return proc.returncode, output
 

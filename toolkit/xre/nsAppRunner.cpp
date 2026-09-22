@@ -2960,8 +2960,6 @@ static nsresult ValidateFeltScratchDir(nsIFile* aDir) {
   nsAutoCString path;
   MOZ_TRY(aDir->GetNativePath(path));
 
-  // lstat rather than stat so a symlink is reported as a symlink instead of
-  // being followed to its target.
   struct stat st;
   if (lstat(path.get(), &st) != 0 || !S_ISDIR(st.st_mode) ||
       st.st_uid != geteuid() || (st.st_mode & 07777) != 0700) {
