@@ -94,8 +94,7 @@ function shouldIgnoreLocalPolicies() {
 // We're only testing for empty objects, not
 // empty strings or empty arrays.
 function isEmptyObject(obj) {
-  // `typeof null == "object"`, so null must be rejected before Object.keys()
-  // below, which would otherwise throw on it.
+  // typeof null == "object", so null has to be rejected before Object.keys().
   if (obj === null || typeof obj != "object" || Array.isArray(obj)) {
     return false;
   }
