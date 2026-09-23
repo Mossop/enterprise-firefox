@@ -12,17 +12,6 @@ SFX_MODULE = $(topsrcdir)/$(NSIS_SFX_MODULE)
 INSTALLER_FILES = $(NSIS_INSTALLER_FILES)
 BRANDING_FILES = $(NSIS_BRANDING_FILES)
 
-# The stub installer assets are only consumed by the stub (stub.nsh), so only
-# require them from the branding directory when the stub is actually built.
-# Enterprise builds don't ship a stub and omit these files.
-ifdef MOZ_STUB_INSTALLER
-BRANDING_FILES += \
-	stubinstaller/bgstub.jpg \
-	stubinstaller/installing_page.css \
-	stubinstaller/profile_cleanup_page.css \
-	$(NULL)
-endif
-
 ifdef IS_LANGUAGE_REPACK
 PPL_LOCALE_ARGS = \
   --l10n-dir=$(REAL_LOCALE_MERGEDIR)/browser/installer \
