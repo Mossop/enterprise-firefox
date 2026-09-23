@@ -9,4 +9,6 @@ skip-if = [
 
 ["test_felt_storage_console_address.js"]
 
+["test_forced_quit_handler.js"]
+
 ["test_relaunch_enforcer.js"]
