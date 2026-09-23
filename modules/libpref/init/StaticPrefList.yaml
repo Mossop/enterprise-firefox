@@ -16120,6 +16120,13 @@
   value: 1048576
   mirror: always
 
+# Whether nsStandardURL::Deserialize should reparse the URL
+# it got from the content process
+- name: network.ipc.reparse_deserialized_uri
+  type: RelaxedAtomicBool
+  value: true
+  mirror: always
+
 # If true, use the HSTS preload list.
 - name: network.stricttransportsecurity.preloadlist
   type: RelaxedAtomicBool
@@ -17423,6 +17430,13 @@
 - name: network.socket.prioritize_runnables
   type: RelaxedAtomicBool
   value: true
+  mirror: always
+
+# Specifies for how many miliseconds to keep processing socket thread events
+# after shutdown was triggered.
+- name: network.socket.shutdown_process_events_ms
+  type: RelaxedAtomicUint32
+  value: 3000
   mirror: always
 
 # Maximum duration (seconds) that transmitted data may remain unacknowledged
@@ -19514,6 +19528,12 @@
   type: RelaxedAtomicUint32
   value: 52428800  # 50MB
   mirror: always
+
+- name: security.connection_allowlists.enabled
+  type: RelaxedAtomicBool
+  value: false
+  mirror: always
+
 
 # Which mechanism the secret decoder ring should use for encryption. Decryption
 # can always happen with all mechanisms.

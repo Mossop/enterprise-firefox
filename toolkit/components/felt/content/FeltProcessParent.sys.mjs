@@ -24,6 +24,7 @@ ChromeUtils.defineESModuleGetters(lazy, {
   resolveManagedProfile: "chrome://felt/content/FeltCommon.sys.mjs",
   FeltLocking: "chrome://felt/content/FeltLocking.sys.mjs",
   FeltStorage: "resource://gre/modules/enterprise/FeltStorage.sys.mjs",
+  StartupPolicies: "resource://gre/modules/enterprise/StartupPolicies.sys.mjs",
   setTimeout: "resource://gre/modules/Timer.sys.mjs",
   clearTimeout: "resource://gre/modules/Timer.sys.mjs",
 });
@@ -194,6 +195,8 @@ export class FeltProcessParent extends JSProcessActorParent {
           }
 
           case "felt-firefox-restarting": {
+            // Only honored below when the restart is applying an update.
+            const lockIntent = aData === "true";
             if (gFeltProcessParentInstance) {
               gFeltProcessParentInstance.restartReported = true;
               gFeltProcessParentInstance.firefox = null;
@@ -268,9 +271,27 @@ export class FeltProcessParent extends JSProcessActorParent {
                   lazy.log.debug(
                     "ParentProcess: Restart requested and pending update, restarting FELT UI"
                   );
+                  // Applying an update relaunches the whole application,
+                  // dropping the in-memory session, so persist it first
+                  // when locking is enabled to resume after the update.
+                  let sessionLocked = false;
+                  if (!lockIntent) {
+                    gFeltProcessParentInstance.logoutReported = true;
+                    await gFeltProcessParentInstance._drainPendingRefresh();
+                  } else {
+                    sessionLocked =
+                      await gFeltProcessParentInstance._persistLockedSession();
+                    if (!sessionLocked) {
+                      // Unlike a close, the update must still be applied,
+                      // so fall back to a fresh sign-in after the restart.
+                      lazy.log.error(
+                        "Lock on update-restart failed, will sign in after update"
+                      );
+                    }
+                  }
                   Services.cpmm.sendAsyncMessage(
                     "FeltParent:FirefoxRestartUpdateExit",
-                    {}
+                    { sessionLocked }
                   );
                 } else if (!restartDisabled) {
                   lazy.log.debug("ParentProcess: Starting new Firefox");
@@ -630,6 +651,8 @@ export class FeltProcessParent extends JSProcessActorParent {
       return;
     }
 
+    this._startupPolicies = await lazy.StartupPolicies.fetch();
+
     this.firefox = this.startFirefoxProcess();
     this.firefox
       .then(async () => {
@@ -866,13 +889,10 @@ export class FeltProcessParent extends JSProcessActorParent {
       await this._resolveProfile();
 
     let extraRunArgs = [];
+    let extraRunEnv = {};
     if (lazy.isTesting()) {
-      extraRunArgs = [
-        "--marionette",
-        "--remote-allow-hosts",
-        "localhost",
-        "--remote-allow-system-access",
-      ];
+      extraRunArgs = ["--marionette", "--remote-allow-hosts", "localhost"];
+      extraRunEnv = { MOZ_REMOTE_ALLOW_SYSTEM_ACCESS: "1" };
     }
 
     let startupCache = Cc["@mozilla.org/startupcacheinfo;1"].getService(
@@ -885,7 +905,12 @@ export class FeltProcessParent extends JSProcessActorParent {
       extraRunArgs.push("-purgecaches");
     }
 
-    if (Services.felt.isFeltSafeMode()) {
+    // Withholding --safe-mode enforces DisableSafeMode on every platform; the
+    // environment variable below only covers the Windows-side checks.
+    if (
+      Services.felt.isFeltSafeMode() &&
+      !this._startupPolicies.isEnabled("DisableSafeMode")
+    ) {
       extraRunArgs.push("--safe-mode");
     }
 
@@ -923,8 +948,8 @@ export class FeltProcessParent extends JSProcessActorParent {
       command: firefoxBin,
       arguments: firefoxRunArgs,
       stderr: "pipe",
-      /* environmentAppend: true,
-      environment: env, */
+      environmentAppend: true,
+      environment: { ...this._startupPolicies.environment, ...extraRunEnv },
     };
 
     try {
@@ -1126,36 +1151,51 @@ export class FeltProcessParent extends JSProcessActorParent {
   }
 
   /**
-   * Lock the session once the spawned Firefox has exited: persist the
-   * (encrypted) refresh token so it can be unlocked later, without signing the
-   * server session out. Called from the exit handler when the browser declared
-   * a lock intent (see the felt-firefox-exiting observer). Never rejects: any
-   * failure falls back to the normal-exit report, whose handler posts the
-   * server signout and drops the tokens it authenticates with.
+   * Persist the session for locking: suppress new token refreshes, let an
+   * in-flight one land so the stored token is the one the console still
+   * accepts, then store the (encrypted) refresh token so it can be unlocked
+   * later, without signing the server session out. On success the in-memory
+   * tokens are dropped. Never rejects: the browser already decided to lock
+   * (it owns the locking prefs and only declares an intent when enabled), so
+   * persist unconditionally; store() still throws if no user is known.
    *
-   * @returns {Promise<void>}
+   * @returns {Promise<boolean>} Whether the session was persisted.
    */
-  async _lockAfterExit() {
+  async _persistLockedSession() {
     // Reuse logoutReported so the refresh observer stops scheduling refreshes
     // and endSessionAfterRefreshFailure stays out of the teardown.
     this.logoutReported = true;
 
     try {
       await this._drainPendingRefresh();
-      // Reaching here means the browser already decided to lock (it owns the
-      // locking pref and only declares the intent when enabled), so persist
-      // unconditionally; store() still throws if no user is known.
       await lazy.FeltLocking.store(
         Services.felt.getRefreshToken(),
         this.loggedInUserInfo?.id
       );
     } catch (err) {
-      lazy.log.error(`Locking failed, falling back to signout: ${err}`);
+      lazy.log.error(`Locking failed: ${err}`);
+      return false;
+    }
+
+    Services.felt.clearTokens();
+    return true;
+  }
+
+  /**
+   * Lock the session once the spawned Firefox has exited. Called from the exit
+   * handler when the browser declared a lock intent (see the
+   * felt-firefox-exiting observer). Any failure falls back to the normal-exit
+   * report, whose handler posts the server signout and drops the tokens it
+   * authenticates with.
+   *
+   * @returns {Promise<void>}
+   */
+  async _lockAfterExit() {
+    if (!(await this._persistLockedSession())) {
       Services.cpmm.sendAsyncMessage("FeltParent:FirefoxNormalExit", {});
       return;
     }
 
-    Services.felt.clearTokens();
     Services.cpmm.sendAsyncMessage("FeltParent:FirefoxLockExit", {});
   }
 

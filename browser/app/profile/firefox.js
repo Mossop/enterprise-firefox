@@ -34,6 +34,8 @@ pref("app.update.checkOnlyInstance.enabled", false);
 pref("app.update.background.enabled", true);
 // Lock the session instead of signing out on browser shutdown.
 pref("enterprise.locking.shutdown", false, locked);
+// Lock the session instead of signing out on an update-driven full restart.
+pref("enterprise.locking.restart", false, locked);
 #endif
 
 // Set add-ons abuse report related prefs specific to Firefox Desktop.
@@ -2509,7 +2511,7 @@ pref("browser.smartwindow.autoTabGrouping.timeoutMs", 8000);
 pref("browser.smartwindow.autoTabGrouping.loglevel", "Warn");
 
 // Smart Window: Smart Form Fill (bug 2055009).
-pref("browser.smartwindow.smartformfill.enabled", false);
+pref("browser.smartwindow.smartformfill.enabled", true);
 
 // Comma-separated ISO 3166-1 region codes where the feature is unavailable.
 pref("browser.smartwindow.smartformfill.disallowedRegions", "FR");
@@ -2523,7 +2525,7 @@ pref("browser.smartwindow.smartformfill.minFormFields", 4);
 pref("browser.smartwindow.agent.enabled", true);
 pref("browser.smartwindow.agent.supportedRegions", "US,CA");
 // Toolbar button that opens the monitor creation panel (bug 2062113).
-pref("browser.smartwindow.agent.toolbar.enabled", false);
+pref("browser.smartwindow.agent.toolbar.enabled", true);
 // Announces the monitor agent as a new feature with a dot on the toolbar
 // button, for as long as the rollout runs. Set on the default branch by Nimbus
 // so that dismissing it, which writes the user branch, survives the rollout
@@ -2607,7 +2609,7 @@ pref("identity.fxaccounts.pairing.enabled", true);
 #endif
 
 // The version of the pairing flow to be used by FxA.
-pref("identity.fxaccounts.pairing.version", 1);
+pref("identity.fxaccounts.pairing.version", 2);
 
 // The remote URI of the FxA pairing server
 #ifdef MOZ_ENTERPRISE
@@ -3922,8 +3924,6 @@ pref("browser.ipProtection.hasSeenFeature", false);
 // when it never hid the feature. The gate stops applying as soon as the browser
 // is updated to a different major version.
 pref("browser.ipProtection.l10nGateVersion", 0);
-// Pref to track if user has opened the VPN panel since location controls were introduced
-pref("browser.ipProtection.openedPanelWithLocation", false);
 // Pref to enable support for site exceptions
 pref("browser.ipProtection.features.siteExceptions", true);
 // Pref to enable support for site inclusions

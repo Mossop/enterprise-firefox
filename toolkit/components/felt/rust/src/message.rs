@@ -67,7 +67,7 @@ pub enum FeltMessage {
     FeltReady(u32),
     OpenURL((String, i32, Option<FocusHint>)),
     RestartForced,
-    Restarting,
+    Restarting(bool),
     LogoutShutdown,
     Exiting(bool),
     UpdateReady,

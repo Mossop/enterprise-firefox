@@ -88,6 +88,8 @@ skip-if = ["enterprise"] # Bug 2068838: skip tests for enterprise builds ; re-en
 
 ["test_createLocalStorage.js"]
 
+["test_estimateGroupUsage.js"]
+
 ["test_estimateOrigin.js"]
 
 ["test_getCachedUsageForPrincipal.js"]
