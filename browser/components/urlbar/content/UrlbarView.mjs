@@ -4186,6 +4186,7 @@ export class UrlbarView {
     return (
       UrlbarPrefs.get("contextMenu.featureGate") &&
       this.input.handlesOpenInCommands &&
+      result.type != UrlbarShared.RESULT_TYPE.TAB_SWITCH &&
       !!UrlbarShared.getLoadRequestFromResult(result)
     );
   }
@@ -4320,14 +4321,7 @@ export class UrlbarView {
     for (let container of containers) {
       let menuitem = this.document.createElement("panel-item");
       menuitem.dataset.usercontextid = String(container.userContextId);
-      if (container.l10nId) {
-        this.document.l10n.setAttributes(
-          menuitem,
-          `${container.l10nId}-panel-item`
-        );
-      } else {
-        menuitem.textContent = container.name;
-      }
+      menuitem.textContent = container.name;
       menuitem.style.setProperty(
         "--panel-item-icon",
         `url("${container.iconURL}")`

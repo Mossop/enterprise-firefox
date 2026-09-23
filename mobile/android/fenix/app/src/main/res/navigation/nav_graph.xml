@@ -238,6 +238,14 @@
             app:destination="@id/global_protections_dashboard" />
     </fragment>
 
+    <dialog
+        android:id="@+id/tabGroupFlowFragment"
+        android:name="org.mozilla.fenix.tabgroups.flow.TabGroupFlowFragment">
+        <argument
+            android:name="entryPoint"
+            app:argType="org.mozilla.fenix.tabgroups.flow.TabGroupFlowEntryPoint" />
+    </dialog>
+
     <fragment
         android:id="@+id/startupFragment"
         android:name="org.mozilla.fenix.StartupFragment">
@@ -1829,6 +1837,9 @@
             <action
                 android:id="@+id/action_menuDialogFragment_to_ipProtectionFragment"
                 app:destination="@id/ipProtectionFragment" />
+            <action
+                android:id="@+id/action_menuDialogFragment_to_tabGroupFlowFragment"
+                app:destination="@id/tabGroupFlowFragment" />
         </dialog>
     </navigation>
 
@@ -1838,6 +1849,22 @@
     <dialog
       android:id="@+id/menuFragment"
       android:name="org.mozilla.fenix.components.menu.MenuFragment">
+
+      <action
+        android:id="@+id/action_menuFragment_to_translationsDialogFragment"
+        app:destination="@id/translationsDialogFragment" />
+
+      <action
+        android:id="@+id/action_menuFragment_to_summarizationFragment"
+        app:destination="@id/summarizationFragment" />
+
+      <action
+        android:id="@+id/action_menuFragment_to_webCompatReporterFragment"
+        app:destination="@id/webCompatReporterFragment" />
+
+      <action
+        android:id="@+id/action_menuFragment_to_createShortcutFragment"
+        app:destination="@id/createShortcutFragment" />
     </dialog>
   </navigation>
 

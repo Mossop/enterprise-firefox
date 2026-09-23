@@ -738,7 +738,10 @@ class _SessionStore {
                 triggeringPrincipal_base64:
                   lazy.E10SUtils.SERIALIZED_SYSTEMPRINCIPAL,
               };
-              state = { windows: [{ tabs: [{ entries: [entry], formdata }] }] };
+              state = {
+                windows: [{ tabs: [{ entries: [entry], formdata }] }],
+                savedGroups: state.savedGroups,
+              };
               this.#log.debug("initSession, will show about:sessionrestore");
             } else if (
               this.#hasSingleTabWithURL(state.windows, "about:welcomeback")
@@ -5003,26 +5006,43 @@ class _SessionStore {
 
   // This method deletes all the closedTabs matching userContextId.
   #forgetTabsWithUserContextId(userContextId) {
+    const clearClosedTabs = windowState => {
+      // In order to remove the tabs in the correct order, we store the
+      // indexes, into an array, then we reverse the array and remove closed
+      // data from the last one going backward.
+      let indexes = [];
+      windowState._closedTabs.forEach((closedTab, index) => {
+        if (closedTab.state.userContextId == userContextId) {
+          indexes.push(index);
+        }
+      });
+
+      for (let index of indexes.reverse()) {
+        this.#removeClosedTabData(windowState, windowState._closedTabs, index);
+      }
+    };
+
     for (let window of Services.wm.getEnumerator("navigator:browser")) {
       let windowState = this.#windows[window.__SSi];
       if (windowState) {
-        // In order to remove the tabs in the correct order, we store the
-        // indexes, into an array, then we revert the array and remove closed
-        // data from the last one going backward.
-        let indexes = [];
-        windowState._closedTabs.forEach((closedTab, index) => {
-          if (closedTab.state.userContextId == userContextId) {
-            indexes.push(index);
-          }
-        });
+        clearClosedTabs(windowState);
+      }
+    }
 
-        for (let index of indexes.reverse()) {
-          this.#removeClosedTabData(
-            windowState,
-            windowState._closedTabs,
-            index
-          );
-        }
+    // Also prune closed windows: remove matching _closedTabs and tabs, and
+    // drop the window entirely if no tabs remain.
+    for (let i = this.#closedWindows.length - 1; i >= 0; i--) {
+      let windowState = this.#closedWindows[i];
+
+      clearClosedTabs(windowState);
+
+      windowState.tabs = windowState.tabs.filter(
+        tab => tab.userContextId != userContextId
+      );
+
+      if (!windowState.tabs.length) {
+        this.#removeClosedWindow(i);
+        this.#saveableClosedWindowData.delete(windowState);
       }
     }
 
