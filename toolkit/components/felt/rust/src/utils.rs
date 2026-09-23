@@ -2,21 +2,16 @@
  * License, v. 2.0. If a copy of the MPL was not distributed with this
  * file, You can obtain one at https://mozilla.org/MPL/2.0/. */
 
-#[cfg(target_os = "windows")]
-use nserror::NS_ERROR_NOT_AVAILABLE;
-use nserror::NS_OK;
+use nserror::{nsresult, NS_ERROR_NOT_AVAILABLE, NS_OK};
 use nsstring::{nsACString, nsCString};
 use serde::{Deserialize, Serialize};
-#[cfg(target_os = "windows")]
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::sync::{Arc, LazyLock, OnceLock, RwLock};
 use std::{ffi::CString, future::Future};
 use xpcom::interfaces::{nsICookie, nsICookieManager, nsIObserverService, nsIPrefBranch};
 use xpcom::RefPtr;
 
-#[cfg(target_os = "windows")]
-use log::error;
-use log::trace;
+use log::{error, trace};
 #[cfg(target_os = "linux")]
 use std::os::raw::c_char;
 
@@ -90,32 +85,25 @@ pub static TOKENS: LazyLock<Arc<RwLock<Tokens>>> =
     LazyLock::new(|| Arc::new(RwLock::new(Default::default())));
 pub static CONSOLE_URL: OnceLock<Arc<String>> = OnceLock::new();
 
-#[cfg(target_os = "windows")]
 pub static BROWSER_PID: AtomicU32 = AtomicU32::new(0);
 
-/// Lets the browsing child bring itself to the front once. Returns whether
-/// Windows accepted the grant, which it refuses when we don't hold the
-/// foreground right ourselves. Errors if the browser never sent its pid.
-#[cfg(target_os = "windows")]
-pub fn allow_browser_foreground() -> Result<bool, nserror::nsresult> {
+/// On Windows, grant the browsing child to bring itself to the front once.
+/// On all platforms, errors if the browser never sent its pid.
+pub fn allow_browser_foreground() -> Result<(), nsresult> {
     let pid = BROWSER_PID.load(Ordering::Relaxed);
     if pid == 0 {
         error!("allow_browser_foreground(): no browser pid, cannot grant the foreground right");
         return Err(NS_ERROR_NOT_AVAILABLE);
     }
+    #[cfg(target_os = "windows")]
     if unsafe { winapi::um::winuser::AllowSetForegroundWindow(pid) } == 0 {
         let err = unsafe { winapi::um::errhandlingapi::GetLastError() };
         error!(
             "allow_browser_foreground(): AllowSetForegroundWindow({}) failed: {}",
             pid, err
         );
-        return Ok(false);
     }
-    trace!(
-        "allow_browser_foreground(): granted the foreground right to pid {}",
-        pid
-    );
-    Ok(true)
+    Ok(())
 }
 
 pub fn inject_one_cookie(cookie: nsICookieWrapper) {

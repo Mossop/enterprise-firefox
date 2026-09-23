@@ -9,7 +9,7 @@ import sys
 
 sys.path.append(os.path.dirname(__file__))
 
-from test_felt_browser_external_link import BaseBrowserExternalLink
+from felt_external_link import BaseBrowserExternalLink
 
 
 class FeltBrowserExternalLinkFocus(BaseBrowserExternalLink):
