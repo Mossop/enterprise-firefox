@@ -89,11 +89,11 @@ class AppRestartLock(FeltTests):
         self.quit_child_browser_for_restart()
         self._settle_after_child_exit(browser_pid)
 
+        self._await_felt_locking_token(
+            True, "Locking on update-restart must persist an encrypted resume token"
+        )
         assert self.signout_count.value == 0, (
             f"Locking on restart must not post a signout, got {self.signout_count.value}"
-        )
-        assert self._felt_has_locking_token(), (
-            "Locking on update-restart must persist an encrypted resume token"
         )
 
     def test_update_restart_without_locking_clears_preexisting_token(self):
@@ -105,8 +105,9 @@ class AppRestartLock(FeltTests):
         self.quit_child_browser_for_restart()
         self._settle_after_child_exit(browser_pid)
 
-        assert not self._felt_has_locking_token(), (
-            "Without locking, an update-restart must clear the stored resume token"
+        self._await_felt_locking_token(
+            False,
+            "Without locking, an update-restart must clear the stored resume token",
         )
         assert self.signout_count.value == 1, (
             "An update-restart without locking must post exactly one signout, "

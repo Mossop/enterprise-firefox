@@ -1194,17 +1194,27 @@ class FeltTestsBase(ConsoleSSOPortMixin, EnterpriseTestsBase):
 
 
 class FeltTests(FeltTestsBase):
-    def _clear_felt_locking_tokens(self):
-        """Start the sign-in below from no stored locking token.
+    def _prepare_felt_keystore(self):
+        """Avoid CI keychain stalls and clear tokens shared across test profiles.
 
-        felt.json lives in UAppData, so it is shared between tests and outlives
-        the per-test profile. A token left by an earlier test would make the
-        sign-in resume that session instead of starting a fresh one."""
+        macOS keychain calls can hang in CI (bug 2074879). A token left in
+        felt.json would resume a prior session instead of starting a new one.
+        Runs before the sign-in, which reaches the keystore through
+        FeltLocking.tryUnlock if a token is present.
+        """
         driver = self.get_driver(Environment.FELT)
         driver.set_context("chrome")
         try:
             driver.execute_script(
-                """
+                r"""
+                const { OSKeyStore } = ChromeUtils.importESModule(
+                    "resource://gre/modules/OSKeyStore.sys.mjs"
+                );
+                OSKeyStore.encrypt = async plaintext => `encrypted(${plaintext})`;
+                OSKeyStore.decrypt = async ciphertext =>
+                    String(ciphertext).replace(/^encrypted\((.*)\)$/, "$1");
+                OSKeyStore.ensureLoggedIn = async () => ({ authenticated: true });
+
                 const { FeltStorage } = ChromeUtils.importESModule(
                     "resource://gre/modules/enterprise/FeltStorage.sys.mjs"
                 );
@@ -1232,6 +1242,12 @@ class FeltTests(FeltTestsBase):
             )
         finally:
             driver.set_context("content")
+
+    def _await_felt_locking_token(self, expected, message):
+        """Wait for the token update, which can finish after the child exits."""
+        self._wait.until(
+            lambda _: self._felt_has_locking_token() == expected, message=message
+        )
 
     def _set_locking_pref(self, pref, enabled):
         """Set a locked enterprise locking pref and sync its FELT intent."""
@@ -1283,8 +1299,8 @@ class FeltTests(FeltTestsBase):
 
     def _start_signed_in(self):
         self._hold_felt_after_child_exit()
+        self._prepare_felt_keystore()
         self.run_felt_base()
-        self._clear_felt_locking_tokens()
         self.connect_child_browser()
         self.assert_user_signed_in(env=Environment.FIREFOX)
         return self._child_driver.session_capabilities["moz:processID"]
