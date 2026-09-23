@@ -18,6 +18,8 @@ const lazy = typeof ChromeUtils != "undefined" ? {} : null;
 
 if (lazy) {
   ChromeUtils.defineESModuleGetters(lazy, {
+    CustomizableUI:
+      "moz-src:///browser/components/customizableui/CustomizableUI.sys.mjs",
     OpenSearchManager:
       "moz-src:///browser/components/search/OpenSearchManager.sys.mjs",
     SearchUIUtils: "moz-src:///browser/components/search/SearchUIUtils.sys.mjs",
@@ -49,8 +51,14 @@ const WORDMARK_ENGINE_FAMILIES = new Set([
   "ebay",
   "google",
   "perplexity",
+  "startpage",
   "wikipedia",
 ]);
+
+// Per-domain counts of how often the address bar install
+// engine button is shown.
+const ADD_ENGINES_BADGE_PREF = "browser.urlbar.addEnginesBadgeShownCount";
+const MAX_ADD_ENGINES_BADGE_SHOWN = 3;
 
 /**
  * Implements the SearchModeSwitcher in the urlbar.
@@ -73,8 +81,8 @@ export class SearchModeSwitcher {
   /** @type {HTMLButtonElement} */
   #closebutton;
   /**
-   * Matches when the wordmark images, which are fixed-color and drawn for a
-   * light background, must give way to the engine's icon and name.
+   * Matches when the wordmark images, whose brand colors may not meet a
+   * contrast preference, must give way to the engine's icon and name.
    *
    * @type {MediaQueryList}
    */
@@ -89,6 +97,13 @@ export class SearchModeSwitcher {
   // Keep track of the currently selected engine when the user is cycling
   // through them with Accel+Up/Down.
   #selectedIndex = 0;
+  /**
+   * Store the last page each browser had its badge counted for as we
+   * don't overcount page visits when badge is updated.
+   *
+   * @type {WeakMap<MozBrowser, string>}
+   */
+  #countedBadgeFor = new WeakMap();
 
   /**
    * @param {UrlbarInput} input
@@ -105,10 +120,9 @@ export class SearchModeSwitcher {
       this.#button.setAttribute("type", "ghost");
     }
     // documentGlobal is chrome-only, and this also runs in about:newtab.
-    // eslint-disable-next-line mozilla/use-documentGlobal
-    this.#noWordmarkQuery = input.ownerDocument.defaultView.matchMedia(
-      "(forced-colors) or (prefers-color-scheme: dark)"
-    );
+    this.#noWordmarkQuery =
+      // eslint-disable-next-line mozilla/use-documentGlobal
+      input.ownerDocument.defaultView.matchMedia("(prefers-contrast)");
 
     // MozButton and PanelList have to be hooked up via id.
     this.#panelList.id = "searchmode-switcher-panel-list-" + input.sapName;
@@ -522,7 +536,121 @@ export class SearchModeSwitcher {
    * @param {boolean} show
    */
   toggleAddEnginesBadge(show) {
-    this.#button.toggleAttribute("addengines", show);
+    if (this.#input.isSearchbarSAP) {
+      this.#button.toggleAttribute("addengines", show);
+      return;
+    }
+
+    if (
+      !show ||
+      !UrlbarPrefs.get("unifiedSearchButton.always") ||
+      this.#hasAdjacentSearchbar
+    ) {
+      this.#button.removeAttribute("addengines");
+      return;
+    }
+
+    this.#badgeIfUnderSiteCap();
+  }
+
+  /**
+   * Whether the dedicated search bar is in the toolbar.
+   *
+   * @returns {boolean}
+   */
+  get #hasAdjacentSearchbar() {
+    if (this.#input.isSearchbarSAP) {
+      throw new Error(
+        "#hasAdjacentSearchbar should not be called from search bar"
+      );
+    }
+    return !!lazy?.CustomizableUI.getPlacementOfWidget("search-container");
+  }
+
+  /**
+   * @returns {nsIContentPrefService2}
+   */
+  get #contentPrefs() {
+    return Cc["@mozilla.org/content-pref/service;1"].getService(
+      Ci.nsIContentPrefService2
+    );
+  }
+
+  /**
+   * Shows the addEngines badge unless this site has already
+   * had a badge shown 3 times.
+   */
+  #badgeIfUnderSiteCap() {
+    // Content prefs are chrome-only.
+    if (!lazy) {
+      throw new Error("addEngine badge code should not be called in content");
+    }
+    let browser = this.#input.window.gBrowser?.selectedBrowser;
+    let uri = browser?.currentURI;
+    if (!uri) {
+      return;
+    }
+    let spec = uri.spec;
+    let context = browser.loadContext;
+
+    let apply = count => {
+      // The button may have moved on to another page while an async read was
+      // in flight.
+      if (browser != this.#input.window.gBrowser?.selectedBrowser) {
+        return;
+      }
+      let show = count < MAX_ADD_ENGINES_BADGE_SHOWN;
+      this.#button.toggleAttribute("addengines", show);
+      if (show) {
+        this.#countBadgeShown(browser, spec, count);
+      }
+    };
+
+    let cached = this.#contentPrefs.getCachedByDomainAndName(
+      spec,
+      ADD_ENGINES_BADGE_PREF,
+      context
+    );
+    if (cached) {
+      apply(Number(cached.value) || 0);
+      return;
+    }
+
+    let count = 0;
+    this.#contentPrefs.getByDomainAndName(
+      spec,
+      ADD_ENGINES_BADGE_PREF,
+      context,
+      {
+        handleResult(pref) {
+          count = Number(pref.value) || 0;
+        },
+        handleError() {},
+        handleCompletion: () => apply(count),
+      }
+    );
+  }
+
+  /**
+   * Counts one showing for this page, once per page rather than once per call:
+   * the badge is refreshed several times for a single visit.
+   *
+   * @param {MozBrowser} browser
+   * @param {string} spec
+   * @param {number} count
+   */
+  #countBadgeShown(browser, spec, count) {
+    if (this.#countedBadgeFor.get(browser) == spec) {
+      return;
+    }
+    this.#countedBadgeFor.set(browser, spec);
+    this.#contentPrefs.set(
+      spec,
+      ADD_ENGINES_BADGE_PREF,
+      /** @type {any} */ (count + 1),
+      browser.loadContext,
+      null
+    );
   }
 
   /**
@@ -795,12 +923,11 @@ export class SearchModeSwitcher {
     let menuitem = this.#createButton(undefined);
     menuitem.classList.add("searchmode-switcher-panel-search-settings-button");
     menuitem.dataset.action = "openpreferences";
-    menuitem.setAttribute("data-l10n-attrs", "accesskey");
     this.#input.document.l10n.setAttributes(
       menuitem,
       UrlbarPrefs.get("browser.nova.enabled")
-        ? "urlbar-searchmode-popup-settings"
-        : "urlbar-searchmode-popup-search-settings"
+        ? "urlbar-searchmode-popup-settings2"
+        : "urlbar-searchmode-popup-search-settings2"
     );
     this.#addCommandListeners(menuitem);
     this.#panelList.appendChild(menuitem);
@@ -815,7 +942,6 @@ export class SearchModeSwitcher {
     menuitem.classList.add("searchmode-switcher-installed");
     menuitem.setAttribute("label", engine.name);
     menuitem.setAttribute("title", engine.name);
-    menuitem.setAttribute("accesskey", engine.name[0]);
     menuitem.setAttribute("closemenu", "none");
 
     if (engine.isNew() && engine.isAppProvided) {
@@ -844,7 +970,6 @@ export class SearchModeSwitcher {
     );
     menuitem.dataset.action = "localsearchmode";
     menuitem.dataset.restrict = mode.restrict;
-    menuitem.setAttribute("data-l10n-attrs", "accesskey");
     this.#addCommandListeners(menuitem);
     this.#input.document.l10n.setAttributes(menuitem, mode.uiLabel);
     return menuitem;

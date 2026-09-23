@@ -154,6 +154,7 @@
 #include "mozilla/dom/ClientState.h"
 #include "mozilla/dom/CloseWatcherManager.h"
 #include "mozilla/dom/Comment.h"
+#include "mozilla/dom/ConnectionAllowlists.h"
 #include "mozilla/dom/ContentChild.h"
 #include "mozilla/dom/ContentList.h"
 #include "mozilla/dom/CustomElementRegistry.h"
@@ -2575,6 +2576,9 @@ Document::~Document() {
   }
 
   DocumentOrShadowRoot::Unlink(this);
+  MOZ_DIAGNOSTIC_ASSERT(
+      !mHasScopedCustomElementRegistry,
+      "Scoped registry should have been removed in LastRelease or Unlink");
 
   UnlinkOriginalDocumentIfStatic();
 
@@ -2675,6 +2679,12 @@ NS_IMPL_CYCLE_COLLECTION_TRAVERSE_BEGIN_INTERNAL(Document)
   NS_IMPL_CYCLE_COLLECTION_TRAVERSE(mPopoverHintStackParent)
 
   DocumentOrShadowRoot::Traverse(tmp, cb);
+  if (tmp->mHasScopedCustomElementRegistry) {
+    RefPtr<CustomElementRegistry> registry =
+        CustomElementRegistry::GetScopedRegistry(*tmp);
+    NS_CYCLE_COLLECTION_NOTE_EDGE_NAME(cb, "scoped CustomElementRegistry");
+    cb.NoteXPCOMChild(registry);
+  }
 
   if (tmp->mRadioGroupContainer) {
     RadioGroupContainer::Traverse(tmp->mRadioGroupContainer.get(), cb);
@@ -2888,6 +2898,7 @@ NS_IMPL_CYCLE_COLLECTION_UNLINK_BEGIN(Document)
   NS_IMPL_CYCLE_COLLECTION_UNLINK(mFrameRequestManager)
 
   DocumentOrShadowRoot::Unlink(tmp);
+  CustomElementRegistry::RemoveScopedRegistry(*tmp);
 
   tmp->mRadioGroupContainer = nullptr;
 
@@ -3759,6 +3770,8 @@ nsresult Document::StartDocumentLoad(const char* aCommand, nsIChannel* aChannel,
 
   MOZ_TRY(InitIntegrityPolicyWAICT(aChannel));
 
+  MOZ_TRY(InitConnectionAllowlists(aChannel));
+
   MOZ_TRY(InitDocPolicy(aChannel));
 
   // Initialize PermissionsPolicy
@@ -4165,6 +4178,52 @@ nsresult Document::InitIntegrityPolicyWAICT(nsIChannel* aChannel) {
   mPolicyContainer->SetIntegrityPolicyWAICT(policy);
 #endif
 
+  return NS_OK;
+}
+
+nsresult Document::InitConnectionAllowlists(nsIChannel* aChannel) {
+  MOZ_ASSERT(!mScriptGlobalObject,
+             "Connection allowlists must be initialized before "
+             "mScriptGlobalObject is set, otherwise they can not restrict "
+             "connections that have already been started!");
+  MOZ_ASSERT(mPolicyContainer,
+             "Policy container must be initialized before connection "
+             "allowlists!");
+
+  if (mPolicyContainer->GetConnectionAllowlists()) {
+    // A local scheme document (about:blank, blob:, ...) inherited the policy
+    // container of its embedder, and with it the connection allowlists. This
+    // is not the inheritance of a required allowlist from the spec.
+    return NS_OK;
+  }
+
+  nsCOMPtr<nsIHttpChannel> httpChannel;
+  nsresult rv = GetHttpChannelHelper(aChannel, getter_AddRefs(httpChannel));
+  if (NS_WARN_IF(NS_FAILED(rv))) {
+    return rv;
+  }
+
+  nsAutoCString headerValue, headerROValue;
+  nsCOMPtr<nsIURI> responseURI;
+  if (httpChannel) {
+    (void)httpChannel->GetResponseHeader("connection-allowlist"_ns,
+                                         headerValue);
+
+    (void)httpChannel->GetResponseHeader("connection-allowlist-report-only"_ns,
+                                         headerROValue);
+    NS_GetFinalChannelURI(aChannel, getter_AddRefs(responseURI));
+  }
+
+  RefPtr<ConnectionAllowlists> allowlists;
+  rv = ConnectionAllowlists::ParseHeaders(headerValue, headerROValue,
+                                          getter_AddRefs(allowlists));
+  NS_ENSURE_SUCCESS(rv, rv);
+
+  if (allowlists) {
+    allowlists->SetResponseURI(responseURI);
+  }
+
+  mPolicyContainer->SetConnectionAllowlists(allowlists);
   return NS_OK;
 }
 
@@ -7048,7 +7107,8 @@ void Document::GetCookie(nsAString& aCookie, ErrorResult& aRv) {
   nsTArray<RefPtr<Cookie>> cookieList;
   bool stale = false;
   int64_t currentTimeInUsec = PR_Now();
-  int64_t currentTimeInMSec = currentTimeInUsec / PR_USEC_PER_MSEC;
+  [[maybe_unused]] int64_t currentTimeInMSec =
+      currentTimeInUsec / PR_USEC_PER_MSEC;
 
   // not having a cookie service isn't an error
   nsCOMPtr<nsICookieService> service =
@@ -7127,10 +7187,7 @@ void Document::GetCookie(nsAString& aCookie, ErrorResult& aRv) {
         continue;
       }
 
-      // check if the cookie has expired
-      if (cookie->ExpiryInMSec() <= currentTimeInMSec) {
-        continue;
-      }
+      MOZ_DIAGNOSTIC_ASSERT(!cookie->IsExpired(currentTimeInMSec));
 
       // Skipping sending TCP cookies when the page has StorageAccess if
       // configured so that CHIPS doesn't affect TCP.
@@ -12568,7 +12625,6 @@ void Document::Destroy() {
   RemoveCustomContentContainer();
 
   ReportDocumentUseCounters();
-  ReportShadowedProperties();
   // ReportPageLoadEvent must run before ReportLCP: ReportLCP skips submitting
   // its histogram when mPageloadEventData.HasDomain() is true, and HasDomain()
   // is set inside ReportPageLoadEvent.
@@ -18100,18 +18156,6 @@ void Document::ReportDocumentUseCounters() {
       printf_stderr("USE_COUNTER_DOCUMENT: %s - %s\n", metricName,
                     urlForLogging->get());
     }
-  }
-}
-
-void Document::ReportShadowedProperties() {
-  if (!ShouldIncludeInTelemetry()) {
-    return;
-  }
-
-  for (const nsString& property : mShadowedHTMLDocumentProperties) {
-    glean::security::ShadowedHtmlDocumentPropertyAccessExtra extra = {};
-    extra.name = Some(NS_ConvertUTF16toUTF8(property));
-    glean::security::shadowed_html_document_property_access.Record(Some(extra));
   }
 }
 
