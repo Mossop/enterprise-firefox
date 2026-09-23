@@ -3,8 +3,14 @@
 
 "use strict";
 
-const { RelaunchEnforcer } = ChromeUtils.importESModule(
+const { RelaunchEnforcer, RelaunchPhase } = ChromeUtils.importESModule(
   "resource://gre/modules/enterprise/RelaunchEnforcer.sys.mjs"
+);
+const { ForcedQuitHandler } = ChromeUtils.importESModule(
+  "resource://gre/modules/enterprise/ForcedQuitHandler.sys.mjs"
+);
+const { EnterpriseForcedQuit } = ChromeUtils.importESModule(
+  "resource:///modules/enterprise/EnterpriseForcedQuit.sys.mjs"
 );
 const { InfoBar } = ChromeUtils.importESModule(
   "resource:///modules/asrouter/InfoBar.sys.mjs"
@@ -32,6 +38,9 @@ function notificationFluentId(win, value) {
 // Every task starts from here, so a failing task cannot fail the ones after it.
 async function reset(win) {
   RelaunchEnforcer.testingOnly_reset();
+  // The reset dropped the delegate, and suppressed the category lookup that
+  // would otherwise re-resolve it, so put Firefox's own back by hand.
+  RelaunchEnforcer.registerWarningUIDelegate(EnterpriseForcedQuit.warningUI);
   win.gNotificationBox.removeAllNotifications(true);
   await TestUtils.waitForCondition(
     () => !notificationValues(win).length,
@@ -45,6 +54,18 @@ add_setup(async function () {
   registerCleanupFunction(() => {
     RelaunchEnforcer._requestUpdateCheck = requestUpdateCheck;
   });
+  // Both delegates are resolved from their components.conf categories on first
+  // use, so asking is what registers them.
+  Assert.strictEqual(
+    RelaunchEnforcer._appWarningUI(),
+    EnterpriseForcedQuit.warningUI,
+    "The warning UI category resolves to Firefox's delegate"
+  );
+  Assert.strictEqual(
+    typeof ForcedQuitHandler._appForcedQuitHook(),
+    "function",
+    "The forced-quit hook category resolves to Firefox's hook"
+  );
   registerCleanupFunction(() =>
     reset(Services.wm.getMostRecentBrowserWindow())
   );
@@ -84,7 +105,11 @@ add_task(async function test_warns_escalates_and_withdraws() {
   let state = RelaunchEnforcer.testingOnly_getState();
   Assert.ok(state.restartArmed, "The restart is armed");
   Assert.ok(state.escalationArmed, "The escalation is armed");
-  Assert.equal(state.shownPhase, WARNING_ID, "The warning phase is recorded");
+  Assert.equal(
+    state.shownPhase,
+    RelaunchPhase.WARNING,
+    "The warning phase is recorded"
+  );
 
   // Re-stating the same budget leaves the bar alone.
   const notification = win.gNotificationBox.allNotifications[0];
@@ -151,7 +176,11 @@ add_task(async function test_warns_escalates_and_withdraws() {
   );
 
   state = RelaunchEnforcer.testingOnly_getState();
-  Assert.equal(state.shownPhase, IMMINENT_ID, "The imminent phase is recorded");
+  Assert.equal(
+    state.shownPhase,
+    RelaunchPhase.IMMINENT,
+    "The imminent phase is recorded"
+  );
   Assert.equal(state.shownMinutes, 4, "The remaining minutes are recorded");
   Assert.ok(
     !state.escalationArmed,
@@ -270,6 +299,71 @@ add_task(async function test_returns_after_the_bar_is_removed() {
     () => !notificationValues(win).length,
     "The relaunch bar goes away"
   );
+});
+
+add_task(async function test_a_withdrawal_mid_show_is_not_adopted() {
+  const win = Services.wm.getMostRecentBrowserWindow();
+  await reset(win);
+
+  // A grace period outliving the budget pins the deadline to the session
+  // start, so each poll below derives the same restartAt down to the minute.
+  const budget = { MinutesRemaining: 1, GracePeriodMinutes: 45 };
+
+  // Hold the show the first deadline queues, so the withdrawal and the
+  // deadline that follows it both land while InfoBar is still putting up a bar
+  // the refresh behind them cannot tell from the one it wants.
+  const showInfoBarMessage = InfoBar.showInfoBarMessage;
+  let release;
+  let reached;
+  const held = new Promise(resolve => (release = resolve));
+  const showing = new Promise(resolve => (reached = resolve));
+  InfoBar.showInfoBarMessage = (...args) => {
+    InfoBar.showInfoBarMessage = showInfoBarMessage;
+    reached();
+    return held.then(() => showInfoBarMessage.apply(InfoBar, args));
+  };
+
+  const restart = RelaunchEnforcer._restart;
+  let restarts = 0;
+  RelaunchEnforcer._restart = () => restarts++;
+
+  try {
+    RelaunchEnforcer.onConsolePoll(budget);
+    await showing;
+    RelaunchEnforcer.onConsolePoll(null);
+    RelaunchEnforcer.onConsolePoll(budget);
+    release();
+    await RelaunchEnforcer._refreshNotification();
+
+    Assert.deepEqual(
+      notificationValues(win),
+      [WARNING_ID],
+      "One warning bar is up for the deadline that stands"
+    );
+
+    const notification =
+      win.gNotificationBox.getNotificationWithValue(WARNING_ID);
+    Assert.equal(
+      Number(
+        notification
+          .querySelector("remote-text")
+          .getAttribute("fluent-variable-datetime")
+      ),
+      RelaunchEnforcer.testingOnly_getState().schedule.restartAt,
+      "The bar carries the deadline that stands"
+    );
+
+    notification.buttonContainer.querySelector("button").click();
+    Assert.equal(restarts, 1, "The restart button still restarts");
+  } finally {
+    InfoBar.showInfoBarMessage = showInfoBarMessage;
+    RelaunchEnforcer._restart = restart;
+    RelaunchEnforcer.onConsolePoll(null);
+    await TestUtils.waitForCondition(
+      () => !notificationValues(win).length,
+      "The relaunch bar goes away"
+    );
+  }
 });
 
 add_task(async function test_takes_the_slot_from_another_infobar() {
@@ -394,4 +488,23 @@ add_task(async function test_warns_in_a_window_that_can_take_a_bar() {
     "The relaunch bar goes away"
   );
   await BrowserTestUtils.closeWindow(privateWin);
+});
+
+add_task(async function test_forced_quit_hook_suppresses_can_close() {
+  const win = Services.wm.getMostRecentBrowserWindow();
+  await reset(win);
+
+  try {
+    await ForcedQuitHandler._appForcedQuitHook()(Ci.nsIAppStartup.eForceQuit);
+    for (const w of Services.wm.getEnumerator("navigator:browser")) {
+      Assert.ok(
+        w.skipNextCanClose,
+        "The window will skip its next canClose check"
+      );
+    }
+  } finally {
+    for (const w of Services.wm.getEnumerator("navigator:browser")) {
+      delete w.skipNextCanClose;
+    }
+  }
 });
