@@ -889,13 +889,10 @@ export class FeltProcessParent extends JSProcessActorParent {
       await this._resolveProfile();
 
     let extraRunArgs = [];
+    let extraRunEnv = {};
     if (lazy.isTesting()) {
-      extraRunArgs = [
-        "--marionette",
-        "--remote-allow-hosts",
-        "localhost",
-        "--remote-allow-system-access",
-      ];
+      extraRunArgs = ["--marionette", "--remote-allow-hosts", "localhost"];
+      extraRunEnv = { MOZ_REMOTE_ALLOW_SYSTEM_ACCESS: "1" };
     }
 
     let startupCache = Cc["@mozilla.org/startupcacheinfo;1"].getService(
@@ -952,7 +949,7 @@ export class FeltProcessParent extends JSProcessActorParent {
       arguments: firefoxRunArgs,
       stderr: "pipe",
       environmentAppend: true,
-      environment: this._startupPolicies.environment,
+      environment: { ...this._startupPolicies.environment, ...extraRunEnv },
     };
 
     try {
