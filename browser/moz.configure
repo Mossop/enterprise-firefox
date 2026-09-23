@@ -146,7 +146,6 @@ def nsis_branding_files(stub_installer):
     return files
 
 
-
 set_config("NSIS_BRANDING_FILES", nsis_branding_files)
 
 
