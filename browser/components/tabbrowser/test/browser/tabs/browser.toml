@@ -661,6 +661,8 @@ skip-if = [
 
 ["browser_tab_splitview_alt_click.js"]
 
+["browser_tab_splitview_click_target.js"]
+
 ["browser_tab_splitview_content_size.js"]
 
 ["browser_tab_splitview_contextmenu.js"]
@@ -723,6 +725,10 @@ skip-if = [
 ]
 
 ["browser_tabswitch_discard.js"]
+
+["browser_tabswitch_remoteness_change.js"]
+
+["browser_tabswitch_remoteness_change_bfcache.js"]
 
 ["browser_tabswitch_select.js"]
 support-files = ["open_window_in_new_tab.html"]
