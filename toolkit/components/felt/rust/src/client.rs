@@ -248,15 +248,17 @@ impl FeltClientThread {
                             match obsData.trim() {
                                 "restart" => {
                                     trace!("FeltClientThread::start_thread::observe() quit-application: restart");
-                                    if let Err(err) = tx.send(FeltMessage::Restarting) {
+                                    let lock_intent =
+                                        crate::RESTART_LOCK_INTENT.load(Ordering::Relaxed);
+                                    if let Err(err) = tx.send(FeltMessage::Restarting(lock_intent)) {
                                         trace!("FeltClientThread::start_thread::observe() failed to send restart: {:?}", err);
                                     }
                                 }
                                 "shutdown" => {
                                     trace!("FeltClientThread::start_thread::observe() quit-application: shutdown");
-                                    let with_lock =
+                                    let lock_intent =
                                         crate::SHUTDOWN_LOCK_INTENT.load(Ordering::Relaxed);
-                                    if let Err(err) = tx.send(FeltMessage::Exiting(with_lock)) {
+                                    if let Err(err) = tx.send(FeltMessage::Exiting(lock_intent)) {
                                         trace!("FeltClientThread::start_thread::observe() failed to send shutdown: {:?}", err);
                                     }
                                 }

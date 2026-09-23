@@ -21,10 +21,11 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from multiprocessing import Array, Process, Value
 
 import requests
-from base_test import EnterpriseTestsBase
+from base_test import EnterpriseTestsBase, Environment
 from felt_consts import firefox_config
 from marionette_driver import expected
 from marionette_driver.by import By
+from marionette_driver.errors import NoSuchWindowException, UnknownException
 from marionette_driver.geckoinstance import DesktopInstance, GeckoInstance
 from mozprofile.prefs import Preferences
 
@@ -1160,6 +1161,101 @@ class FeltTestsBase(ConsoleSSOPortMixin, EnterpriseTestsBase):
 
 
 class FeltTests(FeltTestsBase):
+    def _clear_felt_locking_tokens(self):
+        """Start the sign-in below from no stored locking token.
+
+        felt.json lives in UAppData, so it is shared between tests and outlives
+        the per-test profile. A token left by an earlier test would make the
+        sign-in resume that session instead of starting a fresh one."""
+        driver = self.get_driver(Environment.FELT)
+        driver.set_context("chrome")
+        try:
+            driver.execute_script(
+                """
+                const { FeltStorage } = ChromeUtils.importESModule(
+                    "resource://gre/modules/enterprise/FeltStorage.sys.mjs"
+                );
+                if (FeltStorage._feltStorage?.data) {
+                    FeltStorage._feltStorage.data.lockingTokens = {};
+                }
+                """
+            )
+        finally:
+            driver.set_context("content")
+
+    def _felt_has_locking_token(self):
+        """Whether FELT persisted an encrypted resume token for the signed-in user."""
+        driver = self.get_driver(Environment.FELT)
+        driver.set_context("chrome")
+        try:
+            return driver.execute_script(
+                """
+                const { FeltStorage } = ChromeUtils.importESModule(
+                    "resource://gre/modules/enterprise/FeltStorage.sys.mjs"
+                );
+                const email = FeltStorage.getLastSignedInUser();
+                return !!(email && FeltStorage.hasLockingToken(email));
+                """
+            )
+        finally:
+            driver.set_context("content")
+
+    def _set_locking_pref(self, pref, enabled):
+        """Set a locked enterprise locking pref and sync its FELT intent."""
+        with self._child_driver.using_context("chrome"):
+            self._child_driver.execute_script(
+                """
+                const pref = arguments[0];
+                Services.prefs.unlockPref(pref);
+                Services.prefs.setBoolPref(pref, arguments[1]);
+                """,
+                script_args=(pref, enabled),
+            )
+
+    def _settle_after_child_exit(self, browser_pid):
+        self.wait_process_exit(browser_pid)
+        self.await_felt_auth_window()
+        self.force_window()
+
+    def _hold_felt_after_child_exit(self):
+        # Keep FELT alive after the child exits so we can inspect FELT-side state.
+        self.get_driver(Environment.FELT).set_prefs(
+            {
+                "enterprise.felt_tests.should_not_close_window": True,
+                "enterprise.felt_tests.is_blocking_shutdown": True,
+            },
+            default_branch=True,
+        )
+
+    def quit_child_browser_for_restart(self):
+        """Issue an eRestart quit on the child browser and let FELT relaunch it.
+
+        The quit usually tears the Marionette connection down before
+        execute_script can reply, so these errors mean the restart is underway
+        rather than that it failed."""
+        self._child_driver.set_context("chrome")
+        self._manually_closed_child = True
+        try:
+            self._child_driver.execute_script(
+                "Services.startup.quit(Ci.nsIAppStartup.eRestart | Ci.nsIAppStartup.eAttemptQuit);"
+            )
+        except UnknownException:
+            self._logger.info("Received expected UnknownException")
+        except NoSuchWindowException:
+            self._logger.info("Received expected NoSuchWindowException")
+        except OSError:
+            self._logger.info(
+                "Firefox quit before execute_script returned, no data received over Marionette socket"
+            )
+
+    def _start_signed_in(self):
+        self._hold_felt_after_child_exit()
+        self.run_felt_base()
+        self._clear_felt_locking_tokens()
+        self.connect_child_browser()
+        self.assert_user_signed_in(env=Environment.FIREFOX)
+        return self._child_driver.session_capabilities["moz:processID"]
+
     def reload_chrome_window(self):
         # We set a marker before reloading so we can reliably detect when the
         # new page is ready. A simple readyState == "complete" check is not

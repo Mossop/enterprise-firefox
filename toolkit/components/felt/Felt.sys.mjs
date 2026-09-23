@@ -266,15 +266,9 @@ export class Felt {
           this
         );
 
-        // Clean exit is the sign-out path, drop any locked tokens.
-        lazy.ConsoleClient.performServerSignout()
-          .catch(err => {
-            console.error(`Failed to post signout on exit: ${err}`);
-          })
-          .finally(() => {
-            lazy.FeltLocking.clearLockAndTokens();
-            this.#quitOrHoldForShutdown();
-          });
+        this.#signOutAndQuit(
+          Ci.nsIAppStartup.eAttemptQuit | Ci.nsIAppStartup.eConsiderQuit
+        );
         break;
       }
 
@@ -292,9 +286,13 @@ export class Felt {
           "FeltParent:FirefoxRestartUpdateExit",
           this
         );
-        Services.startup.quit(
-          Ci.nsIAppStartup.eAttemptQuit | Ci.nsIAppStartup.eRestart
-        );
+        const quitMode =
+          Ci.nsIAppStartup.eAttemptQuit | Ci.nsIAppStartup.eRestart;
+        if (message.data.sessionLocked) {
+          this.#quitOrHoldForShutdown(quitMode);
+        } else {
+          this.#signOutAndQuit(quitMode);
+        }
         break;
       }
 
@@ -369,17 +367,36 @@ export class Felt {
     }
   }
 
-  // The isBlockingShutdown branch is test-only: it keeps FELT alive after the
-  // browser exits for follow-up processing.
-  #quitOrHoldForShutdown() {
+  /**
+   * Quit FELT unless a test needs to inspect state after the browser exits.
+   *
+   * @param {number} quitMode nsIAppStartup quit flags.
+   */
+  #quitOrHoldForShutdown(
+    quitMode = Ci.nsIAppStartup.eAttemptQuit | Ci.nsIAppStartup.eConsiderQuit
+  ) {
     if (!lazy.isBlockingShutdown()) {
-      Services.startup.quit(
-        Ci.nsIAppStartup.eAttemptQuit | Ci.nsIAppStartup.eConsiderQuit
-      );
+      Services.startup.quit(quitMode);
     } else if (!this._win) {
       Services.felt.makeBackgroundProcess(false);
       this.showWindow();
     }
+  }
+
+  /**
+   * Sign out, clear all session credentials, and quit with the requested mode.
+   *
+   * @param {number} quitMode nsIAppStartup quit flags.
+   */
+  #signOutAndQuit(quitMode) {
+    lazy.ConsoleClient.performServerSignout()
+      .catch(err => {
+        lazy.log.error(`Failed to post signout on exit: ${err}`);
+      })
+      .finally(() => {
+        lazy.FeltLocking.clearLockAndTokens();
+        this.#quitOrHoldForShutdown(quitMode);
+      });
   }
 
   windowObserver(subject, topic) {
