@@ -437,7 +437,8 @@ const char* const ApplicationReputationService::kBinaryFileExtensions[] = {
     ".scptd",  // AppleScript
     //".scr", exec         // Windows
     //".sct", exec         // Windows shell
-    //".search-ms", exec         // Windows Saved Search
+    //".search-ms", exec          // Windows Saved Search
+    //".searchConnector-ms", exec // Windows Search Connector
     ".seplugin",  // AppleScript
     ".service",   // Systemd service unit file
     //".settingcontent-ms", exec // Windows settings
@@ -1509,7 +1510,7 @@ static void RecordUnsafeDownload(nsIApplicationReputationQuery* aQuery,
 
   constexpr auto kPrefEnabled =
       "browser.safebrowsing.enterprise.telemetry.unsafeDownload.enabled"_ns;
-  if (!Preferences::GetBool(kPrefEnabled.get(), true)) {
+  if (!Preferences::GetBool(kPrefEnabled.get(), false)) {
     return;
   }
 

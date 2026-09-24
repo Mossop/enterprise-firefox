@@ -21,6 +21,8 @@ ChromeUtils.defineESModuleGetters(lazy, {
   createEnterpriseLogger:
     "resource://gre/modules/enterprise/EnterpriseCommon.sys.mjs",
   FeltStorage: "resource://gre/modules/enterprise/FeltStorage.sys.mjs",
+  ForcedQuitHandler:
+    "resource://gre/modules/enterprise/ForcedQuitHandler.sys.mjs",
   setTimeout: "resource://gre/modules/Timer.sys.mjs",
   clearTimeout: "resource://gre/modules/Timer.sys.mjs",
 });
@@ -33,6 +35,36 @@ ChromeUtils.defineLazyGetter(lazy, "log", () => {
  * Remote enterprise console preference
  */
 export const CONSOLE_ADDRESS_PREF = "enterprise.console.address";
+
+/**
+ * Placeholder value the pref holds on generic (non-repacked) builds, where
+ * the AutoConfig file does not bake in a real console address. The actual
+ * address then comes from the MOZ_ENTERPRISE_CONSOLE_URL environment
+ * variable or from felt.json, filled in by the pre-profile console setup
+ * dialog. Keep in sync with CONSOLE_ADDRESS_PLACEHOLDER in the
+ * enterprise-console crate (toolkit/components/enterprise/rust), which holds
+ * this resolution logic for the native consumers; resolveConsoleAddress below
+ * mirrors it in JS.
+ */
+export const CONSOLE_ADDRESS_PLACEHOLDER = "FIREFOX_ENTERPRISE_GENERIC";
+
+async function resolveConsoleAddress(prefValue) {
+  if (prefValue !== CONSOLE_ADDRESS_PLACEHOLDER) {
+    return prefValue;
+  }
+  const envUrl = Services.env.get("MOZ_ENTERPRISE_CONSOLE_URL");
+  if (envUrl) {
+    return envUrl;
+  }
+  await lazy.FeltStorage.init();
+  const storedUrl = lazy.FeltStorage.getConsoleAddress();
+  if (!storedUrl) {
+    throw new Error(
+      "Console address is the generic placeholder and no stored address exists"
+    );
+  }
+  return storedUrl;
+}
 
 /**
  * Error logged when user needs to reauthenticate to obtain new token data
@@ -100,7 +132,7 @@ export const ConsoleClient = {
       this._consoleUriReadyPromise = new Promise((resolve, reject) => {
         try {
           const consoleURI = Services.prefs.getStringPref(CONSOLE_ADDRESS_PREF);
-          resolve(consoleURI);
+          resolve(resolveConsoleAddress(consoleURI));
         } catch (e) {
           lazy.log.warn(`Missing console URI. Waiting on pref change.`);
           const consolePrefObserver = {
@@ -115,7 +147,7 @@ export const ConsoleClient = {
                   try {
                     const consoleURI =
                       Services.prefs.getStringPref(CONSOLE_ADDRESS_PREF);
-                    resolve(consoleURI);
+                    resolve(resolveConsoleAddress(consoleURI));
                   } catch (ex) {
                     lazy.log.error(
                       `Critical misconfiguration: Missing console URI`
@@ -128,6 +160,13 @@ export const ConsoleClient = {
           };
           Services.prefs.addObserver(CONSOLE_ADDRESS_PREF, consolePrefObserver);
         }
+      });
+      // A failure (e.g. felt.json unreadable at that instant) must not be
+      // cached for the rest of the session: clear the slot so the next
+      // access retries the resolution. Callers still see the rejection.
+      this._consoleUriReadyPromise.catch(e => {
+        lazy.log.error("Failed to resolve the console address", e);
+        this._consoleUriReadyPromise = null;
       });
     }
     return this._consoleUriReadyPromise.then(url => new URL(url));
@@ -654,24 +693,6 @@ export const ConsoleClient = {
   },
 
   /**
-   * Quit Firefox, ignoring any callbacks installed by the page
-   * preventing the tab/window from closing.
-   *
-   * returns {void}
-   */
-  quitIgnoringCanClose() {
-    if (Services.felt.isFeltUI()) {
-      throw new Error(
-        "quitIgnoringCanClose(): Called from Felt context, which is not allowed."
-      );
-    }
-    for (let win of Services.wm.getEnumerator("navigator:browser")) {
-      win.skipNextCanClose = true;
-    }
-    Services.startup.quit(Ci.nsIAppStartup.eForceQuit);
-  },
-
-  /**
    * Refreshes the session by asking FELT to fetch an updated token.
    * Serializes concurrent refresh calls via an internal promise.
    * This should only be called from the browser context.
@@ -707,7 +728,7 @@ export const ConsoleClient = {
       this._refreshPromise = null;
       this._refreshResolve = null;
       Services.felt.performSignout();
-      this.quitIgnoringCanClose();
+      lazy.ForcedQuitHandler.quitIgnoringCanClose();
       reject(
         new Error("_refreshSession: Felt failed to respond to re-auth in time.")
       );
@@ -749,12 +770,30 @@ export const ConsoleClient = {
       Services.obs.addObserver(this, "felt-firefox-access-token-refreshed");
       Services.obs.addObserver(this, "felt-firefox-shutdown");
 
+      // Seed the crash reporter with any token already available at startup.
+      this._syncCrashReporterAuthToken();
+
       this.consoleBaseURI.then(
         ({ hostname }) => lazy.ConsoleProxyBypassFilter.register(hostname),
         e => lazy.log.error("Failed to register console proxy bypass:", e)
       );
     }
     return this;
+  },
+
+  /**
+   * Hand the current access token to the crash reporter so it can authenticate
+   * crash report and crash ping uploads with the console.
+   * Called on every token update in the browser process.
+   */
+  _syncCrashReporterAuthToken() {
+    try {
+      Services.appinfo.setAuthToken(
+        Services.felt.getAccessTokenIfValid() || ""
+      );
+    } catch (e) {
+      lazy.log.warn("Failed to sync crash reporter auth token", e);
+    }
   },
 
   observe(_, topic) {
@@ -773,7 +812,7 @@ export const ConsoleClient = {
         break;
       }
       case "felt-firefox-shutdown": {
-        this.quitIgnoringCanClose();
+        lazy.ForcedQuitHandler.quitIgnoringCanClose();
         break;
       }
       case "felt-firefox-access-token-refreshed": {
@@ -781,6 +820,8 @@ export const ConsoleClient = {
         this._refreshResolve?.();
         // The `finally()` block of our promise chain will
         // reset/nullify the promise.
+        // Keep the crash reporter's inherited token in sync.
+        this._syncCrashReporterAuthToken();
         break;
       }
       case "nsPref:changed": {

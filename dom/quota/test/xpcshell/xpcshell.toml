@@ -84,6 +84,7 @@ prefs = [
   "dom.storage.testing=true",
   "dom.storage.client_validation=false",
 ]
+skip-if = ["enterprise"] # Bug 2068838: skip tests for enterprise builds ; re-enable in bug 2065477
 
 ["test_createLocalStorage.js"]
 
