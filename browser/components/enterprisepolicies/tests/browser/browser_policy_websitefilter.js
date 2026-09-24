@@ -83,11 +83,20 @@ add_task(async function test_http() {
     SUPPORT_FILES_PATH + "302.sjs",
     true
   );
-  await checkBlockedPage(SUPPORT_FILES_PATH + "302.sjs", true);
+  await EnterprisePolicyTesting.checkBlockedPage(
+    SUPPORT_FILES_PATH + "302.sjs",
+    true
+  );
 
-  await checkBlockedPage("view-source:" + SUPPORT_FILES_PATH + "301.sjs", true);
+  await EnterprisePolicyTesting.checkBlockedPage(
+    "view-source:" + SUPPORT_FILES_PATH + "301.sjs",
+    true
+  );
 
-  await checkBlockedPage("view-source:" + SUPPORT_FILES_PATH + "302.sjs", true);
+  await EnterprisePolicyTesting.checkBlockedPage(
+    "view-source:" + SUPPORT_FILES_PATH + "302.sjs",
+    true
+  );
 
   // A redirect to an allowed destination must still complete.
   let tab = BrowserTestUtils.addTab(
@@ -288,7 +297,10 @@ add_task(async function test_cached_redirect() {
     },
   });
 
-  await checkBlockedPage(SUPPORT_FILES_PATH + "cached301.sjs", true);
+  await EnterprisePolicyTesting.checkBlockedPage(
+    SUPPORT_FILES_PATH + "cached301.sjs",
+    true
+  );
   is(await redirectHits(), hits + 1, "Redirect was served from the cache");
 
   await clearWebsiteFilter();
@@ -323,7 +335,10 @@ add_task(async function test_service_worker_redirect() {
   BrowserTestUtils.removeTab(tab);
 
   // The worker answers this navigation with a synthesized redirect.
-  await checkBlockedPage(HTTPS_PATH + "sw-redirect", true);
+  await EnterprisePolicyTesting.checkBlockedPage(
+    HTTPS_PATH + "sw-redirect",
+    true
+  );
 
   await unregisterAllServiceWorkers();
   await clearWebsiteFilter();
