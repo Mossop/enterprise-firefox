@@ -55,6 +55,12 @@ const lazy = XPCOMUtils.declareLazy({
  */
 const gEngineIconDataUrls = new Map();
 
+/*
+ * Factor applied to the previous `moz_inputhistory.use_count` each time a
+ * (url, input) tuple is picked.
+ */
+export const INPUT_HISTORY_USE_DECAY = 0.9;
+
 /**
  * Parses a URL and returns the origin parts needed for moz_origins lookups.
  * Returns null if the URL is unparseable.
@@ -535,13 +541,18 @@ export var UrlbarUtils = {
         return db.executeCached(
           `
           INSERT OR REPLACE INTO moz_inputhistory
-          SELECT h.id, IFNULL(i.input, :input), IFNULL(i.use_count, 0) * .9 + 1
+          SELECT h.id, IFNULL(i.input, :input),
+                 IFNULL(i.use_count, 0) * :useDecay + 1
           FROM moz_places h
           LEFT JOIN moz_inputhistory i ON i.place_id = h.id AND i.input = :input
           WHERE url_hash = hash(:url) AND url = :url
           RETURNING place_id
           `,
-          { url, input: input.toLowerCase() }
+          {
+            url,
+            input: input.toLowerCase(),
+            useDecay: INPUT_HISTORY_USE_DECAY,
+          }
         );
       }
     );
@@ -936,8 +947,8 @@ export var UrlbarUtils = {
    *
    * @param {string} url
    *   The URL whose block is being cleared.
-   * @returns {?{blockedAt: number, level: "origin" | "url"}}
-   *   The matching timestamp and level if a fresh block existed,
+   * @returns {?{blockedAt: number}}
+   *   The matching timestamp if a fresh block existed,
    *   null otherwise.
    */
   getBackspaceBlock(url) {
@@ -959,9 +970,7 @@ export var UrlbarUtils = {
     if (ageHours > this._BACKSPACE_BLOCK_MAX_AGE_HOURS) {
       return null;
     }
-    /** @type {"origin" | "url"} */
-    let level = UrlbarShared.isOriginUrl(url) ? "origin" : "url";
-    return { blockedAt: entry.blockedAt, level };
+    return { blockedAt: entry.blockedAt };
   },
 
   /**
@@ -1011,7 +1020,7 @@ export var UrlbarUtils = {
    *
    * @param {string} url
    *   The URL being re-integrated.
-   * @returns {Promise<{wasBlocked: boolean, level: "origin" | "url", backspaceBlock: ?{blockedAt: number, level: "origin" | "url"}}>}
+   * @returns {Promise<{wasBlocked: boolean, level: "origin" | "url", backspaceBlock: ?{blockedAt: number}}>}
    *   `wasBlocked` is whether a database block was actually cleared, `level`
    *   the scope it was cleared at, and `backspaceBlock` the consumed backspace
    *   block, if the URL had one.
@@ -1586,9 +1595,6 @@ UrlbarUtils.RESULT_PAYLOAD_SCHEMA = {
       },
       requestId: {
         type: "string",
-      },
-      sendAttributionRequest: {
-        type: "boolean",
       },
       shouldShowUrl: {
         type: "boolean",

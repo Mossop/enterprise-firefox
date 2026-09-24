@@ -89,15 +89,16 @@ class WindowGlobalParent final : public WindowContext,
     return GetByInnerWindowId(aInnerWindowId);
   }
 
+  static WindowGlobalParent* Cast(WindowContext* aContext);
+
   // The same as the corresponding methods on `WindowContext`, except that the
   // return types are already cast to their parent-process type variants, such
   // as `WindowGlobalParent` or `CanonicalBrowsingContext`.
   WindowGlobalParent* GetParentWindowContext() {
-    return static_cast<WindowGlobalParent*>(
-        WindowContext::GetParentWindowContext());
+    return Cast(WindowContext::GetParentWindowContext());
   }
   WindowGlobalParent* TopWindowContext() {
-    return static_cast<WindowGlobalParent*>(WindowContext::TopWindowContext());
+    return Cast(WindowContext::TopWindowContext());
   }
   CanonicalBrowsingContext* GetBrowsingContext() const {
     return CanonicalBrowsingContext::Cast(WindowContext::GetBrowsingContext());
@@ -307,6 +308,7 @@ class WindowGlobalParent final : public WindowContext,
   mozilla::ipc::IProtocol* AsNativeActor() override { return this; }
 
   // IPC messages
+  MOZ_CAN_RUN_SCRIPT_BOUNDARY
   mozilla::ipc::IPCResult RecvLoadURI(
       const MaybeDiscarded<dom::BrowsingContext>& aTargetBC,
       nsDocShellLoadState* aLoadState, bool aSetNavigating);
@@ -398,6 +400,7 @@ class WindowGlobalParent final : public WindowContext,
   mozilla::ipc::IPCResult RecvAddCertException(
       bool aTemporary, AddCertExceptionResolver&& aResolver);
 
+  MOZ_CAN_RUN_SCRIPT_BOUNDARY
   mozilla::ipc::IPCResult RecvReloadWithHttpsOnlyException();
 
   mozilla::ipc::IPCResult RecvGetStorageAccessPermission(
