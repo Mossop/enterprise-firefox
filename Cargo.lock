@@ -4682,6 +4682,7 @@ dependencies = [
  "cssparser",
  "euclid",
  "hashbrown 0.17.1",
+ "parking_lot",
  "selectors",
  "servo_arc",
  "smallbitvec",
@@ -6777,6 +6778,10 @@ dependencies = [
  "fnv",
  "mozbuild",
  "mozilla-central-workspace-hack",
+ "serde_json",
+ "tempfile",
+ "thiserror 2.0.12",
+ "url",
  "windows-sys",
 ]
 

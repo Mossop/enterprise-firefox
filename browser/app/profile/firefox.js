@@ -2006,15 +2006,6 @@ pref("browser.topsites.contile.enabled", true);
 pref("browser.topsites.contile.endpoint", "https://contile.services.mozilla.com/v1/tiles");
 #endif
 
-// The base URL for the Quick Suggest anonymizing proxy. To make a request to
-// the proxy, include a campaign ID in the path.
-#ifdef MOZ_ENTERPRISE
-pref("browser.partnerlink.attributionURL", "");
-#else
-pref("browser.partnerlink.attributionURL", "https://topsites.services.mozilla.com/cid/");
-#endif
-pref("browser.partnerlink.campaign.topsites", "amzn_2020_a1");
-
 // Activates preloading of the new tab url.
 pref("browser.newtab.preload", true);
 
@@ -3172,6 +3163,10 @@ pref("screenshots.browser.component.preventContentEvents", true);
 // Options 2 and 3 will fallback to the system downloads folder if their specified folder is not found.
 pref("browser.screenshots.folderList", 4);
 pref("browser.screenshots.dir", "");
+
+// Enable/disable opening a tab into a mini window.
+pref("browser.mini-window.enabled", false);
+pref("browser.mini-window.log", false);
 
 // DoH Rollout: whether to clear the mode value at shutdown.
 pref("doh-rollout.clearModeOnShutdown", false);
