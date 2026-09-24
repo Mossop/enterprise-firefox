@@ -933,54 +933,6 @@ add_task(async function universal_survives_originating_window_closure() {
     },
   };
 
-<<<<<<< HEAD
-  const incumbentNotification = await InfoBar.showInfoBarMessage(
-    win2.gBrowser.selectedBrowser,
-    incumbent,
-    sandbox.stub()
-  );
-  await TestUtils.waitForCondition(
-    () => !!getNotificationFromWin(win1, incumbent.id),
-    "Incumbent visible in the surviving window"
-  );
-
-  await BrowserTestUtils.closeWindow(win2);
-
-  Assert.equal(
-    InfoBar._activeInfobar?.notification,
-    incumbentNotification,
-    "The active infobar still names the notification that owns the bars"
-  );
-
-  await InfoBar.showInfoBarMessage(
-    win1.gBrowser.selectedBrowser,
-    replacement,
-    sandbox.stub()
-  );
-  await TestUtils.waitForCondition(
-    () => !!getNotificationFromWin(win1, replacement.id),
-    "Replacement visible in the surviving window"
-  );
-  Assert.ok(
-    !getNotificationFromWin(win1, incumbent.id),
-    "The incumbent was evicted rather than left stacked under the replacement"
-  );
-
-  // Cleanup
-  removeByIdInWin(win1, replacement.id);
-  removeByIdInWin(win1, incumbent.id);
-  sandbox.restore();
-  cleanupInfobars();
-});
-
-// The unload listener closes over the message it was registered for, so a
-// window that outlives its own infobar must not resurrect it: the replacement
-// owns the active infobar by the time the older window goes away.
-add_task(async function stale_unload_does_not_resurrect_replaced_infobar() {
-  const sandbox = sinon.createSandbox();
-  const win1 = BrowserWindowTracker.getTopWindow();
-  const win2 = await BrowserTestUtils.openNewBrowserWindow();
-=======
   try {
     const incumbentNotification = await InfoBar.showInfoBarMessage(
       win2.gBrowser.selectedBrowser,
@@ -1029,7 +981,6 @@ add_task(async function stale_unload_does_not_resurrect_replaced_infobar() {
   const sandbox = sinon.createSandbox();
   const win1 = BrowserWindowTracker.getTopWindow();
   let win2 = await BrowserTestUtils.openNewBrowserWindow();
->>>>>>> refs/tags/FIREFOX_BETA_158_BASE
 
   const first = {
     id: "TEST_UNIVERSAL_STALE_FIRST",
@@ -1054,64 +1005,6 @@ add_task(async function stale_unload_does_not_resurrect_replaced_infobar() {
     },
   };
 
-<<<<<<< HEAD
-  // Shown from win2, so win2's unload listener closes over `first`.
-  await InfoBar.showInfoBarMessage(
-    win2.gBrowser.selectedBrowser,
-    first,
-    sandbox.stub()
-  );
-  await TestUtils.waitForCondition(
-    () => !!getNotificationFromWin(win1, first.id),
-    "First message visible in both windows"
-  );
-
-  const secondNotification = await InfoBar.showInfoBarMessage(
-    win1.gBrowser.selectedBrowser,
-    second,
-    sandbox.stub()
-  );
-  await TestUtils.waitForCondition(
-    () => !!getNotificationFromWin(win2, second.id),
-    "Second message replaced the first"
-  );
-
-  // win2 is closing after the message it was shown for is long gone.
-  await BrowserTestUtils.closeWindow(win2);
-
-  Assert.equal(
-    InfoBar._activeInfobar?.message?.id,
-    second.id,
-    "The stale unload left the replacement as the active infobar"
-  );
-  Assert.equal(
-    InfoBar._activeInfobar?.notification,
-    secondNotification,
-    "The active infobar still names the replacement's notification"
-  );
-
-  // The consequence: a message that replaces the second one is still accepted.
-  await InfoBar.showInfoBarMessage(
-    win1.gBrowser.selectedBrowser,
-    third,
-    sandbox.stub()
-  );
-  await TestUtils.waitForCondition(
-    () => !!getNotificationFromWin(win1, third.id),
-    "Third message visible in the surviving window"
-  );
-  Assert.ok(
-    !getNotificationFromWin(win1, second.id),
-    "The second message was evicted rather than left stacked"
-  );
-
-  // Cleanup
-  removeByIdInWin(win1, third.id);
-  removeByIdInWin(win1, second.id);
-  removeByIdInWin(win1, first.id);
-  sandbox.restore();
-  cleanupInfobars();
-=======
   try {
     // Shown from win2, so win2's unload listener closes over `first`.
     await InfoBar.showInfoBarMessage(
@@ -1720,5 +1613,4 @@ add_task(async function universal_reaches_a_window_still_loading() {
     sandbox.restore();
     cleanupInfobars();
   }
->>>>>>> refs/tags/FIREFOX_BETA_158_BASE
 });
