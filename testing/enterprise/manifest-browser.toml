@@ -29,6 +29,11 @@ disabled = "Bug 1996558: scaffolding for the browsing-child encryption-mismatch 
 
 ["test_felt_browser_external_link.py"]
 
+["test_felt_browser_external_link_focus.py"]
+run-if = [
+  "os == 'win'",
+]
+
 ["test_felt_browser_fxa.py"]
 
 ["test_felt_browser_launcher_process.py"]
