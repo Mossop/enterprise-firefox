@@ -3490,6 +3490,7 @@ static ReturnAbortOnError ShowProfileSelector(
 // then this relaunches so the very early startup consumers (crash reporter URL,
 // update URL, FELT connection) see the configured value from the start.
 // Modeled on ShowProfileDialog.
+MOZ_CAN_RUN_SCRIPT
 static ReturnAbortOnError ShowEnterpriseConsoleSetup(
     nsINativeAppSupport* aNative) {
   nsresult rv;
@@ -6312,7 +6313,8 @@ int XREMain::XRE_mainStartup(bool* aExitFlag) {
       && !BackgroundTasks::IsBackgroundTaskMode()
 #  endif
   ) {
-    rv = ShowEnterpriseConsoleSetup(mNativeApp);
+    nsCOMPtr nativeApp = mNativeApp;
+    rv = ShowEnterpriseConsoleSetup(nativeApp);
     if (rv == NS_ERROR_LAUNCHED_CHILD_PROCESS || rv == NS_ERROR_ABORT) {
       *aExitFlag = true;
       return 0;
