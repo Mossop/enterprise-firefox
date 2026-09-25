@@ -3855,19 +3855,27 @@ export var Policies = {
           param.Restart.Action === "lock"
         );
       }
+      if (param.Crash) {
+        lazy.PoliciesUtils.setAndLockPref(
+          "enterprise.locking.crash",
+          param.Crash.Action === "lock"
+        );
+      }
     },
     onRemove(manager, oldParams) {
+      // unsetAndUnlockPref restores the build default but never re-locks;
+      // re-lock to match the locked defaults the enterprise build ships.
       if (oldParams.Shutdown) {
         lazy.PoliciesUtils.unsetAndUnlockPref("enterprise.locking.shutdown");
-        // unsetAndUnlockPref restores the build default but never re-locks;
-        // re-lock to match the locked default the enterprise build ships.
         Services.prefs.lockPref("enterprise.locking.shutdown");
       }
       if (oldParams.Restart) {
         lazy.PoliciesUtils.unsetAndUnlockPref("enterprise.locking.restart");
-        // unsetAndUnlockPref restores the build default but never re-locks;
-        // re-lock to match the locked default the enterprise build ships.
         Services.prefs.lockPref("enterprise.locking.restart");
+      }
+      if (oldParams.Crash) {
+        lazy.PoliciesUtils.unsetAndUnlockPref("enterprise.locking.crash");
+        Services.prefs.lockPref("enterprise.locking.crash");
       }
     },
   },
