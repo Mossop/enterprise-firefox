@@ -321,15 +321,6 @@ def accept_awsy_task(try_name, platform):
     return False
 
 
-def filter_unsupported_artifact_builds(task, parameters):
-    try_config = parameters.get("try_task_config", {})
-    if not try_config.get("use-artifact-builds", False):
-        return True
-
-    supports_artifact_builds = task.attributes.get("supports-artifact-builds", True)
-    return supports_artifact_builds
-
-
 def filter_out_shippable(task):
     return not task.attributes.get("shippable", False)
 
@@ -1047,10 +1038,7 @@ def target_tasks_general_perf_testing(full_task_graph, parameters, graph_config)
                 return True
             if "chrome-m" in try_name and (
                 ("ebay" in try_name and "live" not in try_name)
-                or (
-                    "live" in try_name
-                    and ("facebook" in try_name or "dailymail" in try_name)
-                )
+                or ("live" in try_name and "dailymail" in try_name)
             ):
                 return False
             # Ignore all fennec tests here, we run those weekly
