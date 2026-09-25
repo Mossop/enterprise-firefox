@@ -60,15 +60,15 @@ for locale in $REPACK_LIMIT_LOCALES; do
     args+=(--limit-locale "$locale")
 done
 
-if -n [ "$LINUX_DEST_DIR" ];
+if [ -n "$LINUX_DEST_DIR" ]; then
     args+=(--linux-dest-dir "$LINUX_DEST_DIR")
 fi
 
-if -n [ "$MAC_DEST_DIR" ];
+if [ -n "$MAC_DEST_DIR" ]; then
     args+=(--mac-dest-dir "$MAC_DEST_DIR")
 fi
 
-if -n [ "$WINDOWS_DEST_DIR" ];
+if [ -n "$WINDOWS_DEST_DIR" ]; then
     args+=(--windows-dest-dir "$WINDOWS_DEST_DIR")
 fi
 

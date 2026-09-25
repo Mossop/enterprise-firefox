@@ -30,6 +30,10 @@ task-defaults:
             in-tree: "partner-repack"
         chain-of-trust: true
         max-run-time: 7200
+        artifacts:
+            - name: project/enterprise/repacks
+              path: /builds/worker/artifacts/
+              type: directory
         env:
             XZ_OPT: "-T0 --block-size=16MiB"
             SECRET_SCOPE: "enterprise"
