@@ -127,6 +127,13 @@
  *   a `ClosedDataSourceOptions` object identifying it.
  */
 
+/**
+ * @typedef {Omit<ClosedTabStateData, "closedId" | "sourceWindowId"> & Partial<Pick<ClosedTabStateData, "closedId" | "sourceWindowId">>} UnsavedClosedTabStateData
+ *   A closed tab before `#saveClosedTabData` assigns its `closedId`. Tabs
+ *   saved into state that is about to be restored have no `sourceWindowId`
+ *   until `#resetClosedTabIds` assigns it.
+ */
+
 // Current version of the format used by Session Restore.
 const FORMAT_VERSION = 1;
 
@@ -192,6 +199,12 @@ const OBSERVING = [
 // Restored in restoreDimensions()
 const WINDOW_ATTRIBUTES = ["width", "height", "screenX", "screenY", "sizemode"];
 
+/**
+ * Chrome flags to the window feature to pass when the flag is set, and
+ * optionally the one to pass when it is unset.
+ *
+ * @type {[number, string, string?][]}
+ */
 const CHROME_FLAGS_MAP = [
   [Ci.nsIWebBrowserChrome.CHROME_TITLEBAR, "titlebar"],
   [Ci.nsIWebBrowserChrome.CHROME_TOOLBAR, "toolbar"],
@@ -1247,7 +1260,9 @@ class _SessionStore {
       }
 
       unregister() {
-        let bc = BrowsingContext.getCurrentTopByBrowserId(this._browserId);
+        let bc = /** @type {CanonicalBrowsingContext} */ (
+          BrowsingContext.getCurrentTopByBrowserId(this._browserId)
+        );
         bc?.sessionHistory?.removeSHistoryListener(this);
         SessionStore.#browserSHistoryListener.delete(permanentKey);
       }
@@ -1302,7 +1317,9 @@ class _SessionStore {
           return;
         }
 
-        let bc = BrowsingContext.getCurrentTopByBrowserId(this._browserId);
+        let bc = /** @type {CanonicalBrowsingContext} */ (
+          BrowsingContext.getCurrentTopByBrowserId(this._browserId)
+        );
         if (bc?.embedderElement?.frameLoader) {
           this._fromIndex = index;
 
@@ -1331,6 +1348,10 @@ class _SessionStore {
       OnHistoryReplaceEntry() {
         this.collectFrom(-1);
       }
+      OnHistoryTruncate() {}
+      OnDocumentViewerEvicted() {}
+      OnHistoryCommit() {}
+      OnEntryUpdated() {}
     }
 
     let sessionHistory = browsingContext.sessionHistory;
@@ -1430,7 +1451,7 @@ class _SessionStore {
    *
    * @param {MozBrowser|null} browser
    *        The browser the update is for, if it is still around.
-   * @param {BrowsingContext} browsingContext
+   * @param {CanonicalBrowsingContext} browsingContext
    *        The browsing context the update was collected from.
    * @param {object} permanentKey
    *        The permanent key of the browser, used when browser is null.
@@ -1725,7 +1746,7 @@ class _SessionStore {
    * the session file to load, and the initial window's delayed startup to
    * finish before initializing a window, i.e. restoring data into it.
    *
-   * @param {Window} aWindow
+   * @param {ChromeWindow} aWindow
    *        Window reference
    * @param {object} [aInitialState]
    *        The initial state to be loaded after startup
@@ -1889,7 +1910,10 @@ class _SessionStore {
           // directly, so notify here as well. Consumers such as
           // SidebarController wait for this to know that the state we handed
           // them is all they are going to get.
-          Services.obs.notifyObservers(aWindow, NOTIFY_SINGLE_WINDOW_RESTORED);
+          Services.obs.notifyObservers(
+            /** @type {nsISupports} */ (aWindow),
+            NOTIFY_SINGLE_WINDOW_RESTORED
+          );
         }
       }
       // we actually restored the session just now.
@@ -1934,7 +1958,7 @@ class _SessionStore {
   /**
    * Called right before a new browser window is shown.
    *
-   * @param {Window} aWindow
+   * @param {ChromeWindow} aWindow
    *        Window reference
    */
   #onBeforeBrowserWindowShown(aWindow) {
@@ -2340,8 +2364,12 @@ class _SessionStore {
           this.#closedWindows.length == 1
         ) {
           // Fake a popupshowing event so shortcuts work:
-          let window = Services.appShell.hiddenDOMWindow;
-          let historyMenu = window.document.getElementById("history-menu");
+          let window = /** @type {Window} */ (
+            Services.appShell.hiddenDOMWindow
+          );
+          let historyMenu = /** @type {XULMenuElement} */ (
+            window.document.getElementById("history-menu")
+          );
           let evt = new window.CustomEvent("popupshowing", { bubbles: true });
           historyMenu.menupopup.dispatchEvent(evt);
         }
@@ -2383,13 +2411,14 @@ class _SessionStore {
     /** @type {Map<string, SavedTabGroupStateData>} */
     let newlySavedTabGroups = new Map();
     // Convert any open tab groups into saved tab groups in place
-    closedWinData.groups = closedWinData.groups.map(tabGroupState =>
+    let savedGroups = closedWinData.groups.map(tabGroupState =>
       lazy.TabGroupState.savedInClosedWindow(
         tabGroupState,
         closedWinData.closedId
       )
     );
-    for (let tabGroupState of closedWinData.groups) {
+    closedWinData.groups = savedGroups;
+    for (let tabGroupState of savedGroups) {
       if (!tabGroupState.saveOnWindowClose) {
         continue;
       }
@@ -2427,6 +2456,8 @@ class _SessionStore {
    *        State of the tab as it was open, of which only the session history
    *        entries and the active index are read. Session migration passes a
    *        reduced state that carries no more than those.
+   * @returns {SavedGroupTabStateData|null}
+   *   The saved group tab, or null if the tab has no history entry to show.
    */
   formatTabStateForSavedGroup(tabState) {
     // Ensure the index is in bounds.
@@ -2434,15 +2465,14 @@ class _SessionStore {
     activeIndex = Math.min(activeIndex, tabState.entries.length - 1);
     activeIndex = Math.max(activeIndex, 0);
     if (!(activeIndex in tabState.entries)) {
-      return {};
+      return null;
     }
     let title =
       tabState.entries[activeIndex].title || tabState.entries[activeIndex].url;
     return {
-      state: tabState,
+      state: /** @type {TabStateData} */ (tabState),
       title,
       image: tabState.image,
-      pos: tabState.pos,
       closedAt: Date.now(),
       closedId: this.#nextClosedId++,
     };
@@ -3203,7 +3233,7 @@ class _SessionStore {
     this.#crashedBrowsers.delete(browser.permanentKey);
     aTab.removeAttribute("crashed");
 
-    let { userTypedValue = null, userTypedClear = 0 } = browser;
+    let { userTypedValue = null } = browser;
     let hasStartedLoad = browser.didStartLoadSinceLastUserTyping();
 
     let cacheState = lazy.TabStateCache.get(browser.permanentKey);
@@ -3242,7 +3272,8 @@ class _SessionStore {
       url: browser.currentURI.spec,
       title: aTab.label,
       userTypedValue,
-      userTypedClear,
+      // TODO(bug 2076655): Remove userTypedClear from the lazy state.
+      userTypedClear: 0,
     });
   }
 
@@ -3310,7 +3341,7 @@ class _SessionStore {
    * @param {WindowStateData} winData
    * @param {ClosedTabStateData[]} closedTabs
    *   The list of closed tabs for a window or tab group.
-   * @param {ClosedTabStateData} tabData
+   * @param {UnsavedClosedTabStateData} tabData
    *   The closed tab that should be inserted into `closedTabs`
    * @param {boolean} [saveAction=true]
    *   Whether or not to add an action to the closed actions stack on save.
@@ -3334,7 +3365,7 @@ class _SessionStore {
     tabData.closedId = this.#nextClosedId++;
 
     // Insert tabData at the right position.
-    closedTabs.splice(index, 0, tabData);
+    closedTabs.splice(index, 0, /** @type {ClosedTabStateData} */ (tabData));
     this.#closedObjectsChanged = true;
 
     if (tabData.closedInGroup) {
@@ -3371,12 +3402,13 @@ class _SessionStore {
    * the tab's final message is still pending we will simply discard it when
    * it arrives so that the tab doesn't reappear in the list.
    *
-   * @param {WindowStateData} winData
+   * @param {Pick<WindowStateData, "_lastClosedTabGroupCount">} winData
    *        The data of the window.
-   * @param {ClosedTabStateData[]} closedTabs
+   * @param {SavedGroupTabStateData[]} closedTabs
    *        The list of closed tabs for a window.
    * @param {number} index
    *        The index of the tab to remove.
+   * @returns {SavedGroupTabStateData}
    */
   #removeClosedTabData(winData, closedTabs, index) {
     // Remove the given index from the list.
@@ -3699,7 +3731,7 @@ class _SessionStore {
   /**
    * Restores the given state into a window.
    *
-   * @param {Window} aWindow
+   * @param {ChromeWindow} aWindow
    *        The window to restore into.
    * @param {object|string} aState
    *        The window state, as an object or a JSON string.
@@ -3768,7 +3800,7 @@ class _SessionStore {
     // by |#restoreTabs|.
     let tabState = aState;
     if (typeof tabState == "string") {
-      tabState = JSON.parse(aState);
+      tabState = JSON.parse(tabState);
     }
     if (!tabState) {
       throw Components.Exception(
@@ -3827,7 +3859,7 @@ class _SessionStore {
    *          tab's custom values.
    */
   getInternalObjectState(obj) {
-    if (obj.__SSi) {
+    if ("__SSi" in obj && obj.__SSi) {
       return this.#windows[obj.__SSi];
     }
     return "loadURI" in obj
@@ -4343,21 +4375,17 @@ class _SessionStore {
   }
 
   /**
-   * Returns either a unified list of closed tabs from both
-   * `_closedTabs` and `closedGroups` or else, when supplying an index,
-   * returns the specific closed tab from that unified list.
+   * Returns a unified list of closed tabs from both `_closedTabs` and
+   * `closedGroups`.
    *
    * This bridges the gap between callers that want a unified list of all closed tabs
    * from all contexts vs. callers that want a specific list of closed tabs from a
    * specific context (e.g. only closed tabs from a specific closed tab group).
    *
    * @param {WindowStateData} winData
-   * @param {number} [aIndex]
-   *   If not supplied, returns all closed tabs and tabs from closed tab groups.
-   *   If supplied, returns the single closed tab with the given index.
-   * @returns {ClosedTabStateData|ClosedTabStateData[]}
+   * @returns {ClosedTabStateData[]}
    */
-  #getStateForClosedTabsAndClosedGroupTabs(winData, aIndex) {
+  #getStateForClosedTabsAndClosedGroupTabs(winData) {
     const closedGroups = winData.closedGroups ?? [];
     const closedTabs = winData._closedTabs ?? [];
 
@@ -4390,13 +4418,6 @@ class _SessionStore {
       }
 
       current++;
-      if (current > aIndex) {
-        break;
-      }
-    }
-
-    if (aIndex !== undefined) {
-      return result[aIndex];
     }
 
     return result;
@@ -4462,10 +4483,8 @@ class _SessionStore {
     // default to the most-recently closed tab
     aIndex = aIndex || 0;
 
-    const closedTabState = this.#getStateForClosedTabsAndClosedGroupTabs(
-      sourceWinData,
-      aIndex
-    );
+    const closedTabState =
+      this.#getStateForClosedTabsAndClosedGroupTabs(sourceWinData)[aIndex];
     if (!closedTabState) {
       throw Components.Exception(
         "Invalid index: not in the closed tabs",
@@ -4723,7 +4742,6 @@ class _SessionStore {
    */
   forgetClosedTabById(aClosedId, aSourceOptions = {}) {
     let sourceWindowsData;
-    let searchPrivateWindows = aSourceOptions.includePrivate ?? true;
     if (
       aSourceOptions instanceof Ci.nsIDOMWindow ||
       "sourceWindowId" in aSourceOptions ||
@@ -4733,6 +4751,9 @@ class _SessionStore {
     } else {
       // Get the windows we'll look for the closed tab in, filtering out private
       // windows if necessary
+      let searchPrivateWindows =
+        /** @type {{includePrivate?: boolean}} */ (aSourceOptions)
+          .includePrivate ?? true;
       let browserWindows = Array.from(this.#browserWindows);
       sourceWindowsData = [];
       for (let win of browserWindows) {
@@ -5949,7 +5970,7 @@ class _SessionStore {
    *
    * @param {object} root
    *        Windows data
-   * @returns {Promise<Window[]>}
+   * @returns {Promise<ChromeWindow[]>}
    *          Resolved when all windows have been opened
    */
   #openWindows(root) {
@@ -6130,8 +6151,7 @@ class _SessionStore {
     // selectTab represents.
     let selectTab = 0;
     if (overwriteTabs) {
-      selectTab = parseInt(winData.selected || 1, 10);
-      selectTab = Math.max(selectTab, 1);
+      selectTab = Math.max(winData.selected || 1, 1);
       selectTab = Math.min(selectTab, winData.tabs.length);
     }
 
@@ -6307,7 +6327,7 @@ class _SessionStore {
         userContextId: tab.userContextId,
       });
       let browsingContext = tab.linkedBrowser.browsingContext;
-      let callbacks = {
+      let callbacks = /** @type {nsIInterfaceRequestor} */ ({
         QueryInterface: ChromeUtils.generateQI(["nsIInterfaceRequestor"]),
         getInterface(iid) {
           if (iid.equals(Ci.nsILoadContext)) {
@@ -6316,7 +6336,7 @@ class _SessionStore {
           }
           throw Components.Exception("", Cr.NS_ERROR_NO_INTERFACE);
         },
-      };
+      });
       try {
         let uri = Services.io.newURI(url);
         Services.io.speculativeConnect(uri, principal, callbacks, false);
@@ -6358,7 +6378,7 @@ class _SessionStore {
   /**
    * This function will restore window features and then restore window data.
    *
-   * @param {Window[]} windows
+   * @param {ChromeWindow[]} windows
    *        ordered array of windows to restore
    */
   #restoreWindowsFeaturesAndTabs(windows) {
@@ -6403,7 +6423,7 @@ class _SessionStore {
    * This function will restore window in reversed z-index, so that users will
    * be presented with most recently used window first.
    *
-   * @param {Window[]} windows
+   * @param {ChromeWindow[]} windows
    *        unordered array of windows to restore
    */
   #restoreWindowsInReversedZOrder(windows) {
@@ -6420,7 +6440,7 @@ class _SessionStore {
   /**
    * Restore multiple windows using the provided state.
    *
-   * @param {Window} aWindow
+   * @param {ChromeWindow} aWindow
    *        Window reference to the first window to use for restoration.
    *        Additionally required windows will be opened.
    * @param {object|string} aState
@@ -6910,7 +6930,7 @@ class _SessionStore {
   /**
    * Restore visibility and dimension features to a window
    *
-   * @param {Window} aWindow
+   * @param {ChromeWindow} aWindow
    *        Window reference
    * @param {WindowStateData} aWinData
    *        Object containing session data for the window
@@ -6962,8 +6982,8 @@ class _SessionStore {
         +(aWinData.height || 0),
         "screenX" in aWinData ? +aWinData.screenX : NaN,
         "screenY" in aWinData ? +aWinData.screenY : NaN,
-        aWinData.sizemode || "",
-        aWinData.sizemodeBeforeMinimized || ""
+        aWinData.sizemode,
+        aWinData.sizemodeBeforeMinimized
       );
       promiseParts.resolve(aWindow);
     }, 0);
@@ -7000,9 +7020,9 @@ class _SessionStore {
    *        Window left in desktop pixels
    * @param {number} aTop
    *        Window top in desktop pixels
-   * @param {string} aSizeMode
+   * @param {WindowStateData["sizemode"]} aSizeMode
    *        Window size mode (eg: maximized)
-   * @param {string} aSizeModeBeforeMinimized
+   * @param {WindowStateData["sizemodeBeforeMinimized"]} aSizeModeBeforeMinimized
    *        Window size mode before window got minimized (eg: maximized)
    */
   #restoreDimensions(
@@ -7026,23 +7046,18 @@ class _SessionStore {
       aHeight
     );
     if (screen) {
-      let screenLeft = {},
-        screenTop = {},
-        screenWidth = {},
-        screenHeight = {};
-      screen.GetAvailRectDisplayPix(
-        screenLeft,
-        screenTop,
-        screenWidth,
-        screenHeight
-      );
+      let left = {},
+        top = {},
+        width = {},
+        height = {};
+      screen.GetAvailRectDisplayPix(left, top, width, height);
 
       // We store aLeft / aTop (screenX/Y) in desktop pixels, see
       // #getWindowDimension.
-      screenLeft = screenLeft.value;
-      screenTop = screenTop.value;
-      screenWidth = screenWidth.value;
-      screenHeight = screenHeight.value;
+      let screenLeft = left.value;
+      let screenTop = top.value;
+      let screenWidth = width.value;
+      let screenHeight = height.value;
 
       let screenBottom = screenTop + screenHeight;
       let screenRight = screenLeft + screenWidth;
@@ -7300,14 +7315,16 @@ class _SessionStore {
    * @param {boolean} [isPrivate]
    *        Optional boolean to get only non-private or private windows
    *        When omitted, we'll return whatever the top-most window is regardless of privateness
-   * @returns {Window|undefined}
+   * @returns {ChromeWindow|undefined}
    */
   #getTopWindow(isPrivate) {
     const options = { allowPopups: true };
     if (typeof isPrivate !== "undefined") {
       options.private = isPrivate;
     }
-    return lazy.BrowserWindowTracker.getTopWindow(options);
+    return /** @type {ChromeWindow} */ (
+      lazy.BrowserWindowTracker.getTopWindow(options)
+    );
   }
 
   /**
@@ -7353,6 +7370,7 @@ class _SessionStore {
    *
    * @param {object} aState
    *        Object containing session data
+   * @returns {ChromeWindow}
    */
   #openWindowWithState(aState) {
     let args = Cc["@mozilla.org/array;1"].createInstance(Ci.nsIMutableArray);
@@ -7441,12 +7459,14 @@ class _SessionStore {
         ","
       )}, extraOptions: ${JSON.stringify(this.#serializePropertyBag(extraOptions))}.`
     );
-    var window = Services.ww.openWindow(
-      null,
-      AppConstants.BROWSER_CHROME_URL,
-      "_blank",
-      features.join(","),
-      args
+    let window = /** @type {ChromeWindow} */ (
+      Services.ww.openWindow(
+        null,
+        AppConstants.BROWSER_CHROME_URL,
+        "_blank",
+        features.join(","),
+        args
+      )
     );
 
     this.#updateWindowRestoreState(window, aState);
@@ -7869,8 +7889,10 @@ class _SessionStore {
             groupToSave.removeAfterRestore = true;
             groupsToSave.set(groupStateToSave.id, groupToSave);
           }
-          let tabToAdd = window.tabs[tIndex];
-          groupToSave.tabs.push(this.formatTabStateForSavedGroup(tabToAdd));
+          let tabData = this.formatTabStateForSavedGroup(window.tabs[tIndex]);
+          if (tabData) {
+            groupToSave.tabs.push(tabData);
+          }
         } else if (!window.tabs[tIndex].hidden && PERSIST_SESSIONS) {
           // Add any previously open tabs that aren't pinned or hidden to the recently closed tabs list
           // which we want to persist between sessions; if the session is manually restored, they will

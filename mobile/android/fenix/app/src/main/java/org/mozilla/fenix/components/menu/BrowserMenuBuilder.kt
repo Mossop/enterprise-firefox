@@ -18,17 +18,21 @@ import org.mozilla.fenix.components.menu.FenixMenuItem.Back
 import org.mozilla.fenix.components.menu.FenixMenuItem.Bookmark
 import org.mozilla.fenix.components.menu.FenixMenuItem.CustomizeReaderView
 import org.mozilla.fenix.components.menu.FenixMenuItem.DesktopSite
+import org.mozilla.fenix.components.menu.FenixMenuItem.Extensions
 import org.mozilla.fenix.components.menu.FenixMenuItem.FindInPage
 import org.mozilla.fenix.components.menu.FenixMenuItem.Forward
 import org.mozilla.fenix.components.menu.FenixMenuItem.IPProtection
 import org.mozilla.fenix.components.menu.FenixMenuItem.More
 import org.mozilla.fenix.components.menu.FenixMenuItem.MoveToNormalTabs
+import org.mozilla.fenix.components.menu.FenixMenuItem.MozillaAccount
 import org.mozilla.fenix.components.menu.FenixMenuItem.OpenInApp
 import org.mozilla.fenix.components.menu.FenixMenuItem.Print
+import org.mozilla.fenix.components.menu.FenixMenuItem.Quit
 import org.mozilla.fenix.components.menu.FenixMenuItem.Refresh
 import org.mozilla.fenix.components.menu.FenixMenuItem.ReportBrokenSite
 import org.mozilla.fenix.components.menu.FenixMenuItem.SaveAsPdf
 import org.mozilla.fenix.components.menu.FenixMenuItem.SaveToCollection
+import org.mozilla.fenix.components.menu.FenixMenuItem.Settings
 import org.mozilla.fenix.components.menu.FenixMenuItem.Share
 import org.mozilla.fenix.components.menu.FenixMenuItem.Shortcut
 import org.mozilla.fenix.components.menu.FenixMenuItem.SummarizePage
@@ -116,6 +120,8 @@ class BrowserMenuBuilder(
         @VisibleForTesting internal val BROWSER_MENU_GROUP_1_ID = "browser_group_1"
         @VisibleForTesting internal val BROWSER_MENU_GROUP_2_ID = "browser_group_2"
         @VisibleForTesting internal val BROWSER_MENU_GROUP_3_ID = "browser_group_3"
+        @VisibleForTesting internal val BROWSER_MENU_GROUP_4_ID = "browser_group_4"
+        @VisibleForTesting internal val BROWSER_MENU_GROUP_5_ID = "browser_group_5"
 
         @VisibleForTesting
         internal fun buildDefaultConfiguration(
@@ -149,6 +155,7 @@ class BrowserMenuBuilder(
                                 Bookmark,
                                 FindInPage,
                                 DesktopSite,
+                                Extensions,
                                 More(
                                     listOf(
                                         Translate,
@@ -164,6 +171,16 @@ class BrowserMenuBuilder(
                                     )
                                 ),
                             ),
+                    ),
+                    MenuSectionConfiguration(
+                        id = BROWSER_MENU_GROUP_4_ID,
+                        presentationMode = Row,
+                        items = listOf(MozillaAccount, Settings),
+                    ),
+                    MenuSectionConfiguration(
+                        id = BROWSER_MENU_GROUP_5_ID,
+                        presentationMode = Row,
+                        items = listOf(Quit),
                     ),
                 )
             return if (isToolbarAtBottom || isExpandedToolbarEnabled) rest + navSection else listOf(navSection) + rest

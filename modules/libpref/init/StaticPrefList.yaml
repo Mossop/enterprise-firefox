@@ -7544,6 +7544,14 @@
   mirror: always
 #endif
 
+#ifdef MOZ_WIDGET_GTK
+# Whether to use zero-copy GPU import for DMABuf video frames in remote canvas drawImage.
+- name: gfx.canvas.remote.use-draw-image-fast-path-dmabuf
+  type: RelaxedAtomicBool
+  value: false
+  mirror: always
+#endif
+
 - name: gfx.canvas.remote.recycle-used-data-surface
   type: RelaxedAtomicBool
   value: true
@@ -8752,13 +8760,6 @@
   value: true
 #endif
 
-#ifdef XP_MACOSX
-- name: gfx.webrender.enable-client-storage
-  type: bool
-  value: false
-  mirror: once
-#endif
-
  # Width of WebRender tile size
 - name: gfx.webrender.picture-tile-width
   type: RelaxedAtomicInt32
@@ -9198,14 +9199,6 @@
 - name: image.mem.max_legal_imgframe_size_kb
   type: RelaxedAtomicInt32
   value: -1
-  mirror: always
-
-# If true, then the HTMLImageElement naturalWidth and naturalHeight APIs will
-# fall back to the default concrete object size (300x150) for images that lack
-# a natural width and/or height.
-- name: image.natural-size-fallback.enabled
-  type: RelaxedAtomicBool
-  value: true
   mirror: always
 
 # Whether we record SVG images as blobs or not.
@@ -11343,7 +11336,7 @@
 # also include animation-timeline property.
 - name: layout.css.scroll-driven-animations.enabled
   type: RelaxedAtomicBool
-  value: @IS_NIGHTLY_BUILD@
+  value: true
   mirror: always
   rust: true
 
