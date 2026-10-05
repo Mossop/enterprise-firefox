@@ -22,6 +22,9 @@ sealed interface FenixMenuItem {
     /** A menu item allowing to bookmark the current page, or to edit the bookmark it already has. */
     data object Bookmark : FenixMenuItem
 
+    /** A menu item expanding to the user's extensions, or to a list of recommended ones. */
+    data object Extensions : FenixMenuItem
+
     /** A menu item allowing to start the find in page feature. */
     data object FindInPage : FenixMenuItem
 
@@ -64,6 +67,15 @@ sealed interface FenixMenuItem {
 
     /** A menu item allowing to print the current webpage. */
     data object Print : FenixMenuItem
+
+    /** A menu item allowing to sign in or manage the current Mozilla account. */
+    data object MozillaAccount : FenixMenuItem
+
+    /** A menu item allowing to open the application settings. */
+    data object Settings : FenixMenuItem
+
+    /** A menu item allowing to delete the browsing data of this session and quit the application. */
+    data object Quit : FenixMenuItem
 
     /** A menu item allowing to navigate back. */
     data object Back : FenixMenuItem
