@@ -898,7 +898,7 @@ TextInputListener::HandleEvent(Event* aEvent) {
 
     RefPtr<nsAtom> eventTypeAtom =
         ShortcutKeys::ConvertEventToDOMEventType(widgetKeyEvent);
-    for (KeyEventHandler* handler = keyHandlers; handler;
+    for (RefPtr<KeyEventHandler> handler = keyHandlers; handler;
          handler = handler->GetNextHandler()) {
       if (!handler->EventTypeEquals(eventTypeAtom)) {
         continue;
@@ -1640,7 +1640,7 @@ nsresult TextControlState::PrepareEditor() {
       if (mPasswordMaskData) {
         passwordMaskData = std::move(mPasswordMaskData);
       } else {
-        passwordMaskData = MakeUnique<PasswordMaskData>();
+        passwordMaskData = std::make_unique<PasswordMaskData>();
       }
     } else {
       mPasswordMaskData = nullptr;

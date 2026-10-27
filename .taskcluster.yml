@@ -413,6 +413,7 @@ tasks:
                               'repoUrl == "https://github.com/mozilla/enterprise-firefox-try"': "dev"
                               'repoUrl == "https://github.com/mozilla-releng/staging-firefox"': "dev"
                               'repoUrl == "https://github.com/mozilla-firefox/firefox-dev"': "dev"
+                              'repoUrl == "https://github.com/mozilla-firefox/firefox-dev-secure"': "dev"
                               'repoUrl == "https://github.com/mozilla-firefox/firefox"': "prod"
                               $default: null
                       shortRef:
@@ -749,7 +750,7 @@ tasks:
                               'baseRef == "enterprise-beta" || baseRef == "refs/heads/enterprise-beta"': "refs/heads/beta"
                               'baseRef == "enterprise-release" || baseRef == "refs/heads/enterprise-release"': "refs/heads/release"
                               $default: "master"
-                  commBaseRev: 1964f703cfbb140662bff2b8a26dae25f574e107
+                  commBaseRev: 73a04c7967590a13076211f6748f32f40e126f98
                   commHeadRepoUrl: https://github.com/thunderbird/thunderbird-desktop
                   commHeadRef:
                       $if: 'project == "enterprise-firefox-try"'
@@ -760,7 +761,7 @@ tasks:
                               'baseRef == "enterprise-beta" || baseRef == "refs/heads/enterprise-beta"': "refs/heads/beta"
                               'baseRef == "enterprise-release" || baseRef == "refs/heads/enterprise-release"': "refs/heads/release"
                               $default: "master"
-                  commHeadRev: 1964f703cfbb140662bff2b8a26dae25f574e107
+                  commHeadRev: 73a04c7967590a13076211f6748f32f40e126f98
                   shortRef:
                       $if: 'ref[:11] == "refs/heads/"'
                       then: {$eval: 'ref[11:]'}
