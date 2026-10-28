@@ -5888,8 +5888,10 @@ mozilla::ipc::IPCResult ContentParent::RecvStoreAndBroadcastBlobURLRegistration(
     return IPC_FAIL(this, "Blob deserialization failed.");
   }
 
-  BlobURLProtocolHandler::AddDataEntryParent(aURI, aPrincipal, aPartitionKey,
-                                             blobImpl, ChildID());
+  if (NS_FAILED(BlobURLProtocolHandler::AddDataEntryParent(
+          aURI, aPrincipal, aPartitionKey, blobImpl, ChildID()))) {
+    return IPC_FAIL(this, "Conflicting Blob URL principal");
+  }
   BroadcastBlobURLRegistration(aURI, blobImpl, aPrincipal, aPartitionKey, this);
 
   return IPC_OK();
@@ -6958,6 +6960,10 @@ mozilla::ipc::IPCResult ContentParent::RecvCreateBrowsingContext(
     if (!opener) {
       return IPC_FAIL(this, "Opener doesn't exist in parent process");
     }
+  }
+
+  if (opener && !opener->Group()->IsKnownForChildID(ChildID())) {
+    return IPC_FAIL(this, "Should be subscribed to the opener's group");
   }
 
   RefPtr<BrowsingContext> child = BrowsingContext::Get(aInit.mId);
