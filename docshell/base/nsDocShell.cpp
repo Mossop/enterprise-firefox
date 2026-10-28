@@ -8648,9 +8648,7 @@ nsresult nsDocShell::HandleSameDocumentNavigation(
       win->DispatchAsyncHashchange(currentURI, newURI);
     }
 
-    if (aState.mHistoryNavBetweenSameDoc || doHashchange) {
-      win->DispatchSyncPopState();
-    }
+    win->DispatchSyncPopState();
 
     if (needsScrollPosUpdate && win->HasActiveDocument()) {
       SetCurScrollPosEx(bx, by);
@@ -10156,7 +10154,7 @@ nsresult nsDocShell::DoURILoad(nsDocShellLoadState* aLoadState,
   } else if (doInitialSyncLoad) {
     // Materialize LoadingSessionHistoryInfo here, because DocumentChannel
     // loads have it, and later history behavior depends on it existing.
-    UniquePtr<SessionHistoryInfo> entry = std::make_unique<SessionHistoryInfo>(
+    auto entry = std::make_unique<SessionHistoryInfo>(
         uri, aLoadState->TriggeringPrincipal(),
         aLoadState->PrincipalToInherit(),
         aLoadState->PartitionedPrincipalToInherit(),

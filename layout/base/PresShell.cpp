@@ -8707,7 +8707,7 @@ bool PresShell::EventHandler::MaybeDiscardOrDelayKeyboardEvent(
   if (aGUIEvent->mMessage == eKeyDown) {
     mPresShell->mNoDelayedKeyEvents = true;
   } else if (!mPresShell->mNoDelayedKeyEvents) {
-    UniquePtr<DelayedKeyEvent> delayedKeyEvent =
+    auto delayedKeyEvent =
         std::make_unique<DelayedKeyEvent>(aGUIEvent->AsKeyboardEvent());
     mPresShell->mDelayedEvents.AppendElement(std::move(delayedKeyEvent));
   }
@@ -8780,7 +8780,7 @@ bool PresShell::EventHandler::MaybeDiscardOrDelayMouseEvent(
       if (ps->mNoDelayedMouseEvents) {
         break;
       }
-      UniquePtr<DelayedMouseEvent> delayedMouseEvent =
+      auto delayedMouseEvent =
           std::make_unique<DelayedMouseEvent>(aGUIEvent->AsMouseEvent());
       ps->mDelayedEvents.AppendElement(std::move(delayedMouseEvent));
       break;
@@ -8791,7 +8791,7 @@ bool PresShell::EventHandler::MaybeDiscardOrDelayMouseEvent(
       }
       // contextmenu is triggered after right mouseup on Windows and right
       // mousedown on other platforms.
-      UniquePtr<DelayedPointerEvent> delayedPointerEvent =
+      auto delayedPointerEvent =
           std::make_unique<DelayedPointerEvent>(aGUIEvent->AsPointerEvent());
       ps->mDelayedEvents.AppendElement(std::move(delayedPointerEvent));
       break;
@@ -10688,12 +10688,21 @@ void PresShell::DidDoReflow(bool aInterruptible) {
     return;
   }
 
+  if (nsCOMPtr<nsIDocShell> docShell = mPresContext->GetDocShell()) {
+    DOMHighResTimeStamp now = GetPerformanceNowUnclamped();
+    docShell->NotifyReflowObservers(aInterruptible, mLastReflowStart, now);
+  }
+
+  if (mIsDestroying) {
+    return;
+  }
+
   {
     nsAutoScriptBlocker scriptBlocker;
     AutoAssertNoFlush noReentrantFlush(*this);
-    if (nsCOMPtr<nsIDocShell> docShell = mPresContext->GetDocShell()) {
-      DOMHighResTimeStamp now = GetPerformanceNowUnclamped();
-      docShell->NotifyReflowObservers(aInterruptible, mLastReflowStart, now);
+
+    if (RefPtr hub = mAccessibleCaretEventHub) {
+      hub->DidReflow();
     }
 
     SynthesizeMouseMove(false);

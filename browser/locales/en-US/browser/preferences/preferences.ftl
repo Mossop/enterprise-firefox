@@ -446,6 +446,9 @@ website-language-heading =
 website-preferred-language =
   .label = Preferred languages
 
+website-language-list =
+  .aria-label = Preferred languages
+
 website-add-language =
   .label = Add language
 
@@ -988,6 +991,9 @@ home-homepage-custom-homepage-button =
 home-custom-homepage-card-header =
     .label = Website address(es)
 
+home-custom-homepage-list =
+    .aria-label = Website addresses
+
 home-custom-homepage-address =
     .placeholder = Enter address
 home-custom-homepage-address-button =
@@ -1149,6 +1155,9 @@ search-one-click-header-3 =
     .label = Additional search engines
     .description = Choose which search engines and shortcuts appear in your address bar.
 
+search-engine-list =
+    .aria-label = Search engines and shortcuts
+
 update-search-engine-success =
     .message = Search engine successfully updated
 
@@ -1214,6 +1223,9 @@ containers-card-header2 =
 containers-add-button2 =
     .label = Add new container
     .accesskey = A
+
+containers-list =
+    .aria-label = Containers
 
 containers-new-tab-check3 =
     .label = Select a container for each new tab
@@ -1674,8 +1686,8 @@ autofill-payment-methods-manage-payments-button =
     .label = Manage payment methods
     .accesskey = m
 # This operation requires the user to authenticate with the operating system (device sign-in)
-autofill-reauth-payment-methods-checkbox-2 =
-    .label = Require device sign in to autofill and manage payment methods
+autofill-payment-methods-require-device-sign-in-checkbox =
+    .label = Require device sign-in to autofill
     .accesskey = o
 # Security codes are the CVV/CVC card codes
 autofill-payment-methods-save-security-codes-checkbox =

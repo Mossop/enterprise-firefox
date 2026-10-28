@@ -659,7 +659,7 @@ CanonicalBrowsingContext::CreateLoadingSessionHistoryEntryForLoad(
     }
 
     // If the entry was updated, update also the LoadingSessionHistoryInfo.
-    UniquePtr<LoadingSessionHistoryInfo> lshi =
+    auto lshi =
         std::make_unique<LoadingSessionHistoryInfo>(entry, existingLoadingInfo);
     aLoadState->SetLoadingSessionHistoryInfo(std::move(lshi));
     existingLoadingInfo = aLoadState->GetLoadingSessionHistoryInfo();
@@ -1425,8 +1425,7 @@ already_AddRefed<nsDocShellLoadState> CanonicalBrowsingContext::CreateLoadInfo(
   const SessionHistoryInfo& info = aEntry->Info();
   RefPtr loadState = MakeRefPtr<nsDocShellLoadState>(info.GetURI());
   info.FillLoadInfo(*loadState);
-  UniquePtr<LoadingSessionHistoryInfo> loadingInfo;
-  loadingInfo = std::make_unique<LoadingSessionHistoryInfo>(aEntry);
+  auto loadingInfo = std::make_unique<LoadingSessionHistoryInfo>(aEntry);
   loadingInfo->mTriggeringNavigationType = Some(aNavigationType);
   mLoadingEntries.AppendElement(
       LoadingSessionHistoryEntry{loadingInfo->mLoadId, aEntry});
@@ -3146,7 +3145,8 @@ void CanonicalBrowsingContext::DeactivateDocuments(
     Group()->EachParent([this, &targetInfo, aNavigationType,
                          aForUnload](ContentParent* aContentParent) {
       (void)aContentParent->SendDeactivateDocuments(
-          this, targetInfo, aNavigationType, aForUnload);
+          this, GetContentParent() == aContentParent ? targetInfo : Nothing(),
+          aNavigationType, aForUnload);
     });
 
     // When the old document unloads (aForUnload) it is destroyed rather than
