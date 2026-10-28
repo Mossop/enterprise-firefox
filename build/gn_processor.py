@@ -35,6 +35,17 @@ generated_header = """
 RESPONSE_FILE_NAME_FLAG = "{{response_file_name}}"
 
 
+class FStringLiteral(str):
+    """A value which must be written as an f-string when serialized, so that it
+    can refer to variables available in the mozbuild sandbox, such as TOPSRCDIR.
+    Its contents will become the exact contents of the f-string, meaning any
+    literal braces must already be escaped."""
+
+    def __repr__(self):
+        # Match mb_serialize()'s usage of json.dumps() for strings
+        return "f" + json.dumps(self)
+
+
 class MozbuildWriter:
     def __init__(self, fh):
         self._fh = fh
@@ -51,10 +62,10 @@ class MozbuildWriter:
             if len(v) <= 1:
                 return repr(v)
             # Pretty print a list
-            raw = json.dumps(v, indent=self._indent_increment)
-            # Add the indent of the current indentation level
-            return raw.replace("\n", "\n" + self.indent)
-        if isinstance(v, bool):
+            item_indent = self.indent + " " * self._indent_increment
+            items = (",\n" + item_indent).join(self.mb_serialize(i) for i in v)
+            return f"[\n{item_indent}{items}\n{self.indent}]"
+        if isinstance(v, (bool, FStringLiteral)):
             return repr(v)
         return json.dumps(v)
 
@@ -248,6 +259,7 @@ def filter_gn_config(path, gn_result, sandbox_vars, input_vars, gn_target):
                 "type",
                 "args",
                 "inputs",
+                "sources",
                 "script",
                 "outputs",
                 "response_file_contents",
@@ -258,6 +270,13 @@ def filter_gn_config(path, gn_result, sandbox_vars, input_vars, gn_target):
                     # path relative to the target dir.
                     spec[spec_attr] = [
                         mozpath.relpath(d, path) for d in spec[spec_attr]
+                    ]
+                elif spec_attr in ("inputs", "sources"):
+                    spec[spec_attr] = [
+                        "!//" + mozpath.relpath(d, path)
+                        if mozpath.basedir(d, [str(path)])
+                        else d
+                        for d in spec[spec_attr]
                     ]
             gn_out["targets"][target_fullname] = spec
             continue
@@ -386,6 +405,34 @@ def process_gn_config(
             path = f"/{project_relsrcdir}/{path}"
         return path
 
+    # If an arg contains a path to a vendored source file, rewrite it as an
+    # f-string referring to TOPSRCDIR. Args that do not contain paths to
+    # vendored source files are returned unchanged. This is required because
+    # actions are executed with a cwd in the objdir, and at vendor time we
+    # cannot know neither the absolute path of the source tree nor its relative
+    # path from the objdir.
+    def maybe_encode_srcdir_path_arg(arg):
+        # The arg may contain a prefix before the srcdir path. We know that any
+        # srcdir path will be a relative path from the tempdir to the source
+        # tree, and must therefore start with "../", so find the first
+        # occurrence of that string in order to find the path section. Args
+        # containing paths followed by a suffix are not currently supported.
+        idx = arg.find("../")
+        if idx == -1:
+            return arg
+        prefix, path = arg[:idx], arg[idx:]
+        path = mozpath.normpath(mozpath.join(str(gn_config_dir), path))
+        if not os.path.exists(path) or not mozpath.basedir(path, [str(topsrcdir)]):
+            return arg
+
+        def escape_braces(s):
+            return s.replace("{", "{{").replace("}", "}}")
+
+        relpath = mozpath.relpath(path, str(topsrcdir))
+        return FStringLiteral(
+            escape_braces(prefix) + "{TOPSRCDIR}/" + escape_braces(relpath)
+        )
+
     # Encodes a file path used in a response file contents as a mozbuild-style
     # path, e.g. prefixed with "/" to denote topsrcdir-relative, or "!/" to
     # denote objdir-relative.
@@ -456,6 +503,14 @@ def process_gn_config(
 
         if spec["type"] == "action" and "script" in spec:
             generated_files = []
+
+            extra_deps = [
+                "!" + resolve_path(path[1:])
+                if path.startswith("!")
+                else resolve_path(path)
+                for attr in ("inputs", "sources")
+                for path in spec.get(attr, [])
+            ]
 
             if spec.get("response_file_contents"):
                 # GN's response_file_contents field allows passing an unlimited
@@ -532,7 +587,7 @@ def process_gn_config(
                 args = [
                     f"{spec['outputs'][0]}.rsp"
                     if arg == RESPONSE_FILE_NAME_FLAG
-                    else arg
+                    else maybe_encode_srcdir_path_arg(arg)
                     for arg in spec.get("args", [])
                 ]
                 flags = [
@@ -543,7 +598,7 @@ def process_gn_config(
                     "script": "/python/mozbuild/mozbuild/action/file_generate_wrapper.py",
                     "entry_point": "action",
                     "outputs": [resolve_path(f) for f in spec["outputs"]],
-                    "extra_deps": ["!" + output_response_file],
+                    "extra_deps": ["!" + output_response_file] + extra_deps,
                     "flags": flags,
                 })
 
@@ -551,13 +606,16 @@ def process_gn_config(
                 flags = [
                     resolve_path(spec["script"]),
                     resolve_path(""),
-                ] + spec.get("args", [])
-                generated_files.append({
+                ] + [maybe_encode_srcdir_path_arg(arg) for arg in spec.get("args", [])]
+                generated_file = {
                     "script": "/python/mozbuild/mozbuild/action/file_generate_wrapper.py",
                     "entry_point": "action",
                     "outputs": [resolve_path(f) for f in spec["outputs"]],
                     "flags": flags,
-                })
+                }
+                if extra_deps:
+                    generated_file["extra_deps"] = extra_deps
+                generated_files.append(generated_file)
 
             context_attrs["GeneratedFiles"] = generated_files
 
@@ -566,24 +624,25 @@ def process_gn_config(
         extensions = set()
         use_defines_in_asflags = False
 
-        for f in [item.lstrip("//") for item in spec.get("sources", [])]:
-            ext = mozpath.splitext(f)[-1]
-            extensions.add(ext)
-            src = f"{project_relsrcdir}/{f}"
-            if ext in {".h", ".hpp", ".inc"}:
-                continue
-            elif ext == ".def":
-                context_attrs["DEFFILE"] = f"/{src}"
-            elif ext == ".rc":
-                context_attrs["RCFILE"] = f"/{src}"
-            elif ext != ".S" and src not in non_unified_sources:
-                unified_sources.append(f"/{src}")
-            else:
-                sources.append(f"/{src}")
-            # The Mozilla build system doesn't use DEFINES for building
-            # ASFILES.
-            if ext == ".s":
-                use_defines_in_asflags = True
+        if spec["type"] != "action":
+            for f in [item.lstrip("//") for item in spec.get("sources", [])]:
+                ext = mozpath.splitext(f)[-1]
+                extensions.add(ext)
+                src = f"{project_relsrcdir}/{f}"
+                if ext in {".h", ".hpp", ".inc"}:
+                    continue
+                elif ext == ".def":
+                    context_attrs["DEFFILE"] = f"/{src}"
+                elif ext == ".rc":
+                    context_attrs["RCFILE"] = f"/{src}"
+                elif ext != ".S" and src not in non_unified_sources:
+                    unified_sources.append(f"/{src}")
+                else:
+                    sources.append(f"/{src}")
+                # The Mozilla build system doesn't use DEFINES for building
+                # ASFILES.
+                if ext == ".s":
+                    use_defines_in_asflags = True
 
         context_attrs["SOURCES"] = sources
         context_attrs["UNIFIED_SOURCES"] = unified_sources

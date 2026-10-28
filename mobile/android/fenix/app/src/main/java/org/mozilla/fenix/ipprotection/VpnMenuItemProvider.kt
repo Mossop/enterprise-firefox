@@ -5,6 +5,7 @@
 package org.mozilla.fenix.ipprotection
 
 import androidx.compose.ui.semantics.Role
+import kotlin.math.roundToLong
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -24,6 +25,7 @@ import mozilla.components.feature.ipprotection.store.IPProtectionAction
 import mozilla.components.feature.ipprotection.store.IPProtectionStore
 import mozilla.components.feature.ipprotection.store.state.IPProtectionState
 import mozilla.components.feature.ipprotection.store.state.IPProtectionStatus
+import mozilla.components.feature.ipprotection.store.state.gigabytes
 import mozilla.components.feature.ipprotection.store.state.ipProtectionStatus
 import mozilla.components.feature.ipprotection.store.state.isEligible
 import mozilla.components.ui.icons.R as iconsR
@@ -80,12 +82,12 @@ class VpnMenuItemProvider(
         when (ipProtectionStore.state.ipProtectionStatus) {
             IPProtectionStatus.Disabled -> {
                 Vpn.menuTurnedOn.record()
-                ipProtectionStore.dispatch(IPProtectionAction.Toggle)
+                ipProtectionStore.dispatch(IPProtectionAction.ActivationAction.Toggle)
             }
 
             IPProtectionStatus.Enabled -> {
                 Vpn.menuTurnedOff.record()
-                ipProtectionStore.dispatch(IPProtectionAction.Toggle)
+                ipProtectionStore.dispatch(IPProtectionAction.ActivationAction.Toggle)
             }
 
             IPProtectionStatus.AuthRequired -> {
@@ -97,7 +99,7 @@ class VpnMenuItemProvider(
 
             IPProtectionStatus.Activating,
             IPProtectionStatus.DataLimitReached,
-            IPProtectionStatus.ConnectionError -> ipProtectionStore.dispatch(IPProtectionAction.Toggle)
+            IPProtectionStatus.ConnectionError -> ipProtectionStore.dispatch(IPProtectionAction.ActivationAction.Toggle)
 
             IPProtectionStatus.Unavailable,
             IPProtectionStatus.Uninitialized -> Unit
@@ -141,9 +143,13 @@ private fun IPProtectionMenuState.toMenuItem() =
 private val IPProtectionMenuState.dataLimitSummary: MenuItemSummary?
     get() =
         when {
-            status == IPProtectionStatus.DataLimitReached && dataLimitGb > 0 ->
+            status == IPProtectionStatus.DataLimitReached && dataLimit != null ->
                 MenuItemSummary(
-                    text = Text.Resource(R.string.ip_protection_menu_limit_reached, listOf(dataLimitGb)),
+                    text =
+                        Text.Resource(
+                            R.string.ip_protection_menu_limit_reached,
+                            listOf(dataLimit.gigabytes.roundToLong()),
+                        ),
                     state = MenuItemState.WARNING,
                 )
             else -> null

@@ -221,6 +221,7 @@ class LintRoller:
         for linter in chain(*[self.parse(p) for p in paths]):
             # Add only the excludes present in paths
             linter["local_exclude"] = linter.get("exclude", [])[:]
+            linter["global_exclude"] = self.exclude[:]
             # Add in our global excludes
             exclude = linter.setdefault("exclude", [])
             exclude.extend(self.exclude)
@@ -320,7 +321,7 @@ class LintRoller:
                     "warning: {} support-file modified, linting entire tree "
                     "(press ctrl-c to cancel)".format(linter["name"])
                 )
-            elif paths == {self.root}:
+            elif paths == {os.path.abspath(self.root)}:
                 # If the command line is ".", the path will match with the root
                 # directory. In this case, get all the paths, so that we can
                 # benefit from chunking below.

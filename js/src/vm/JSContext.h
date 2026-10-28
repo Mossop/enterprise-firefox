@@ -12,6 +12,8 @@
 #include "mozilla/Maybe.h"
 #include "mozilla/MemoryReporting.h"
 
+#include <type_traits>
+
 #include "jstypes.h"  // JS_PUBLIC_API
 
 #include "builtin/AtomicsObject.h"
@@ -154,9 +156,12 @@ class MicroTaskQueueElement {
     Embedder = JS::MicroTask::Kind::Embedder,
 
     // A PromiseReactionRecord, run by PromiseReactionJob.
-    PromiseReaction = JS::MicroTask::Kind::FirstJSKind,
+    PromiseReactionObject = JS::MicroTask::Kind::FirstJSKind,
+    // A settled, same-realm promise reaction held inline in the task's payload
+    // rather than allocated as a PromiseReactionRecord.
+    InlinePromiseReaction,
 
-    // A ThenableJob; the kind selects which resolution routine it runs.
+    // A ThenableJobObject; the kind selects which resolution routine it runs.
     ResolveThenable,
     ResolveBuiltinThenable,
     // Used by JS::SafeResolve: runs PerformPromiseResolution on the job's
@@ -184,6 +189,27 @@ class MicroTaskQueueElement {
 
   explicit MicroTaskQueueElement(const JS::MicroTask& microTask)
       : microTask_(microTask) {}
+
+  // Build a JS::MicroTask of a JS kind, for engine code which can't reach the
+  // private JS::MicroTask constructors.
+  template <typename... Args>
+  static JS::MicroTask MakeMicroTask(Kind kind, Args&&... args) {
+    return JS::MicroTask(static_cast<JS::MicroTask::Kind>(kind),
+                         std::forward<Args>(args)...);
+  }
+
+  // Accessors for the private fields of a JS::MicroTask of a JS kind.
+  static constexpr size_t ExtraCount =
+      std::extent_v<decltype(JS::MicroTask::extra_)>;
+  static uint8_t kind(const JS::MicroTask& task) { return task.kind_; }
+  static uint32_t jsBits(const JS::MicroTask& task) { return task.jsBits_; }
+  static const JS::Value& value(const JS::MicroTask& task) {
+    return task.value_;
+  }
+  static const JS::Value& extra(const JS::MicroTask& task, size_t index) {
+    MOZ_ASSERT(index < ExtraCount);
+    return task.extra_[index];
+  }
 
   const JS::MicroTask& toMicroTask() const { return microTask_; }
 

@@ -2788,7 +2788,7 @@ nsToolkitProfileService::AsyncFlush(JSContext* aCx, dom::Promise** aPromise) {
     return result.StealNSResult();
   }
 
-  UniquePtr<IniData> iniData = std::make_unique<IniData>();
+  auto iniData = std::make_unique<IniData>();
   BuildIniData(iniData->mProfiles, iniData->mInstalls);
 
   nsCOMPtr<nsIRemoteService> rs = GetRemoteService();

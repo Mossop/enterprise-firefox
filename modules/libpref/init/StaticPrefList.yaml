@@ -8688,6 +8688,18 @@
 #endif
   mirror: always
 
+# The number of samples per pixel used to rasterize path clips: 0 for
+# analytical anti-aliasing, 1 to 4 for 4 samples, 8 otherwise. Software
+# WebRender always uses 4 samples.
+- name: gfx.webrender.path-aa.samples
+  type: int32_t
+#if defined(MOZ_WIDGET_ANDROID)
+  value: 4
+#else
+  value: 8
+#endif
+  mirror: always
+
 - name: gfx.webrender.compositor
   type: bool
 #if defined(XP_WIN) || defined(XP_DARWIN) || defined(MOZ_WIDGET_GTK)
@@ -8877,6 +8889,13 @@
   type: bool
   value: false
   mirror: once
+
+# Use WebRender for path rendering, for example to render clip-path: path()
+# and shape() with WebRender path clips instead of mask images.
+- name: gfx.webrender.paths
+  type: bool
+  value: false
+  mirror: always
 
 # When gl debug message is a high severity message, forwward it to gfx critical
 # note.
@@ -9485,6 +9504,12 @@
   rust: true
 
 #endif
+
+# Whether to defer decoding images that are computed to be out of the visible area.
+- name: image.decode.defer_if_not_visible
+  type: bool
+  value: true
+  mirror: always
 
 #---------------------------------------------------------------------------
 # Prefs starting with "intl."
@@ -11381,7 +11406,7 @@
 # Whether the CSS namespace is exposed in workers and worklets.
 - name: layout.css.namespace.exposed-in-workers-and-worklets
   type: RelaxedAtomicBool
-  value: false
+  value: @IS_NIGHTLY_BUILD@
   mirror: always
 
 # Is -moz-osx-font-smoothing enabled? (Only supported in OSX builds)
@@ -11505,7 +11530,7 @@
 # https://drafts.csswg.org/css-values-5/#random
 - name: layout.css.random.enabled
   type: RelaxedAtomicBool
-  value: @IS_NIGHTLY_BUILD@
+  value: true
   mirror: always
   rust: true
 
@@ -12407,14 +12432,6 @@
 - name: mathml.legacy_mathvariant_attribute.disabled
   type: bool
   value: @IS_NIGHTLY_BUILD@
-  mirror: always
-  rust: true
-
-# Whether to enable font-family: math in mathml instead of using the
-# internal language x-math.
-- name: mathml.font_family_math.enabled
-  type: RelaxedAtomicBool
-  value: true
   mirror: always
   rust: true
 

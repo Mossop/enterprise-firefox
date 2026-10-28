@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import gc
 import os
 import re
 import shutil
@@ -261,6 +262,11 @@ def generate_tasks(
         except ParameterMismatch as e:
             print(PARAMETER_MISMATCH.format(e.args[0]))
             sys.exit(1)
+
+        # The generated graph is long-lived and taskgraph collects no garbage
+        # while generating it, so a collection triggered while serializing it
+        # would walk the whole heap for little gain.
+        gc.freeze()
 
         # write cache
         key = cache_key(

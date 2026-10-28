@@ -55,6 +55,9 @@
 #include "mozilla/PageloadEvent.h"
 #include "mozilla/Preferences.h"
 #include "mozilla/PresShell.h"
+#ifdef MOZ_WIDGET_ANDROID
+#  include "mozilla/ProcInfoParent.h"
+#endif
 #include "mozilla/ProcessHangMonitor.h"
 #include "mozilla/ProcessHangMonitorIPC.h"
 #include "mozilla/ProfilerLabels.h"
@@ -1563,6 +1566,21 @@ void ContentParent::Init() {
 
   (void)SendInitProfiler(ProfilerParent::CreateForProcess(OtherPid()));
 
+#ifdef MOZ_WIDGET_ANDROID
+  // On Android content processes may be isolated, meaning we must create a
+  // ProcInfoParent to allow GetProcInfo() to query the process info remotely.
+  Endpoint<PProcInfoParent> procInfoParent;
+  Endpoint<PProcInfoChild> procInfoChild;
+  if (NS_SUCCEEDED(PProcInfo::CreateEndpoints(
+          mozilla::ipc::EndpointProcInfo::Current(), OtherEndpointProcInfo(),
+          &procInfoParent, &procInfoChild))) {
+    mProcInfoParent = ProcInfoParent::Create(std::move(procInfoParent));
+    if (mProcInfoParent) {
+      (void)SendInitProcInfo(std::move(procInfoChild));
+    }
+  }
+#endif
+
   RefPtr<GeckoMediaPluginServiceParent> gmps(
       GeckoMediaPluginServiceParent::GetSingleton());
   if (gmps) {
@@ -1886,6 +1904,13 @@ void ContentParent::ActorDestroy(ActorDestroyReason why) {
     ProcessHangMonitor::RemoveProcess(mHangMonitorActor);
     mHangMonitorActor = nullptr;
   }
+
+#ifdef MOZ_WIDGET_ANDROID
+  if (mProcInfoParent) {
+    mProcInfoParent->Shutdown();
+    mProcInfoParent = nullptr;
+  }
+#endif
 
   RefPtr<FileSystemSecurity> fss = FileSystemSecurity::Get();
   if (fss) {
@@ -4843,7 +4868,7 @@ static int32_t AddGeolocationListener(
     nsIDOMGeoPositionErrorCallback* errorCallBack, bool highAccuracy) {
   RefPtr<Geolocation> geo = Geolocation::NonWindowSingleton();
 
-  UniquePtr<PositionOptions> options = std::make_unique<PositionOptions>();
+  auto options = std::make_unique<PositionOptions>();
   options->mTimeout = 0;
   options->mMaximumAge = 0;
   options->mEnableHighAccuracy = highAccuracy;
@@ -5889,8 +5914,10 @@ mozilla::ipc::IPCResult ContentParent::RecvStoreAndBroadcastBlobURLRegistration(
     return IPC_FAIL(this, "Blob deserialization failed.");
   }
 
-  BlobURLProtocolHandler::AddDataEntryParent(aURI, aPrincipal, aPartitionKey,
-                                             blobImpl, ChildID());
+  if (NS_FAILED(BlobURLProtocolHandler::AddDataEntryParent(
+          aURI, aPrincipal, aPartitionKey, blobImpl, ChildID()))) {
+    return IPC_FAIL(this, "Conflicting Blob URL principal");
+  }
   BroadcastBlobURLRegistration(aURI, blobImpl, aPrincipal, aPartitionKey, this);
 
   return IPC_OK();
@@ -6959,6 +6986,10 @@ mozilla::ipc::IPCResult ContentParent::RecvCreateBrowsingContext(
     if (!opener) {
       return IPC_FAIL(this, "Opener doesn't exist in parent process");
     }
+  }
+
+  if (opener && !opener->Group()->IsKnownForChildID(ChildID())) {
+    return IPC_FAIL(this, "Should be subscribed to the opener's group");
   }
 
   RefPtr<BrowsingContext> child = BrowsingContext::Get(aInit.mId);
