@@ -691,7 +691,7 @@ symbol-scrapers:
     fetch:
         type: git
         repo: https://github.com/mozilla/symbol-scrapers
-        revision: 7d405538e2f687b37e62445ae177db8a95405665
+        revision: ff50ee2e950b59e29ca0483707c51ae361b5926c
 
 openssl-1.1.1w:
     description: openssl 1.1.1w source code
@@ -754,6 +754,17 @@ cpython-3.11.7.exe:
         sha256: c117c6444494bbe4cc937e8a5a61899d53f7f5c5bc573c5d130304e457d54024
         size: 26009544
         artifact-name: python-3.11.7-amd64.exe
+
+cpython-3.12.15:
+    description: cpython 3.12.15 source code
+    fetch:
+        type: static-url
+        url: https://www.python.org/ftp/python/3.12.15/Python-3.12.15.tgz
+        sha256: de1a241a519e0a3374fea98988d0b52c886743f9d953f23be8269cc7b59c5fab
+        size: 27303440
+        artifact-name: cpython-source.tar.zst
+        strip-components: 1
+        add-prefix: cpython-source/
 
 windows-rs:
     description: Source of the windows rust crate
