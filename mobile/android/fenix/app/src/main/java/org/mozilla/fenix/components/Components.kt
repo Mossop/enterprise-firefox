@@ -458,6 +458,14 @@ class Components(
             add(context.getString(R.string.pref_key_passwords))
             add(context.getString(R.string.pref_key_credit_cards))
         }
+
+        if (!settings.enableHomepageWeatherWidget) {
+            add(context.getString(R.string.pref_key_show_homepage_weather_widget))
+        }
+
+        if (!settings.enableHomepageWrexhamWidget) {
+            add(context.getString(R.string.pref_key_show_homepage_wrexham_widget))
+        }
     }
 
     val ipProtectionPromptRepository by lazyMonitored {
@@ -563,7 +571,11 @@ class Components(
 
     val tabDataCoordinator: TabDataCoordinator by lazyMonitored {
         DefaultTabDataCoordinator(
-            tabRepository = DefaultTabRepository(browserStore = core.store),
+            tabRepository =
+                DefaultTabRepository(
+                    browserStore = core.store,
+                    tabsUseCases = useCases.tabsUseCases,
+                ),
             tabGroupRepository = core.tabGroupRepository,
             isInactiveTabsEnabled = settings::inactiveTabsAreEnabled,
             isTabGroupsEnabled = settings::tabGroupsEnabled,

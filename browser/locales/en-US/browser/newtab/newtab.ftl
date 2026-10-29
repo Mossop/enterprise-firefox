@@ -239,10 +239,11 @@ newtab-empty-section-topstories-generic = You’ve caught up. Check back later f
 
 newtab-discovery-empty-section-topstories-header = You are caught up!
 newtab-discovery-empty-section-topstories-content = Check back later for more stories.
-newtab-discovery-empty-section-topstories-try-again-button = Try Again
+newtab-discovery-empty-section-topstories-try-again-button = Try again
 newtab-discovery-empty-section-topstories-loading = Loading…
-# Displays when a layout in a section took too long to fetch articles.
-newtab-discovery-empty-section-topstories-timed-out = Oops! We almost loaded this section, but not quite.
+# Headline and body shown when stories fail to load, for example when offline or the server can’t be reached.
+newtab-discovery-empty-section-topstories-unavailable-header = Stories aren’t available right now
+newtab-discovery-empty-section-topstories-unavailable-body = Check your connection or try again later.
 
 ## Strings for the story cards carousel
 
@@ -960,15 +961,6 @@ newtab-crossword-widget-open-menu-button =
 # Context menu item linking to the Particle website, the provider of the
 # crossword. “Particle” is a brand name and should not be translated.
 newtab-crossword-menu-powered-by-particle = Powered by Particle
-
-## World Cup wallpaper OMC messages
-## Shown as on-screen messages promoting the World Cup wallpapers.
-
-newtab-sports-widget-message-wallpapers-title = Kick off the World Cup with new wallpapers
-newtab-sports-widget-message-wallpapers-body = Bring some match-day energy to your browser for the tournament.
-newtab-sports-widget-message-wallpapers-cta = Choose wallpaper
-newtab-sports-widget-message-wallpapers-semifinals-title = Get a new wallpaper for the semi-finals
-newtab-sports-widget-message-wallpapers-semifinals-body = Set the stage for the World Cup’s biggest matches.
 
 ## Strings introduced by the Nova redesign of the Timer widget
 

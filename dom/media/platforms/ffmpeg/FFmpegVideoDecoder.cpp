@@ -756,9 +756,10 @@ MediaResult FFmpegVideoDecoder<LIBAV_VER>::InitVulkanDecoder() {
     return NS_ERROR_DOM_MEDIA_FATAL_ERR;
   }
 
-  mVulkanDecoder.CheckDecodeCapabilities(mCodecID, mVulkanDeviceContext,
-                                         mInfo.mExtraData, mInfo.mColorDepth);
-  if (!mVulkanDecoder.VulkanCanDecodeFormat(mCodecID,
+  if (!mVulkanDecoder.CheckDecodeCapabilities(mCodecID, mVulkanDeviceContext,
+                                              mInfo.mExtraData,
+                                              mInfo.mColorDepth) ||
+      !mVulkanDecoder.VulkanCanDecodeFormat(mCodecID,
                                             mLib->avcodec_version())) {
     return NS_ERROR_NOT_AVAILABLE;
   }
@@ -904,6 +905,10 @@ bool FFmpegVideoDecoder<LIBAV_VER>::ShouldDisableHWDecoding(
     return false;
   }
 #    endif
+  if (ShouldDecodeInGPUProcess()) {
+    FFMPEG_LOG("Platform decoder must be used in the GPU process");
+    return true;
+  }
   switch (mCodecID) {
     case AV_CODEC_ID_H264:
     case AV_CODEC_ID_HEVC:
@@ -2562,6 +2567,11 @@ bool FFmpegVideoDecoder<LIBAV_VER>::MediaCodecSupportsColorDepth(
               media::MCSInfo::GetMediaCodecFromMimeType(aMimeType), support,
               aColorDepth)
               .isEmpty();
+}
+
+/* static */ bool FFmpegVideoDecoder<LIBAV_VER>::ShouldDecodeInGPUProcess() {
+  return XRE_IsRDDProcess() && StaticPrefs::media_gpu_process_decoder() &&
+         gfx::gfxVars::GPUProcessEnabled();
 }
 #endif
 

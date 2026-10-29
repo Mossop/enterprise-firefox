@@ -556,10 +556,15 @@ pref("browser.urlbar.trustPanel.breachAlerts.featureGate", true);
 pref("browser.urlbar.trustPanel.breachAlerts", true);
 #endif
 
-// Whether or not Unified Search Button is shown always.
-pref("browser.urlbar.unifiedSearchButton.always", false);
-// Whether or not history is shown when in search mode.
-pref("browser.urlbar.unifiedSearchButton.historyInSearchMode", false);
+#ifdef NIGHTLY_BUILD
+  // Whether or not Unified Search Button is shown always.
+  pref("browser.urlbar.unifiedSearchButton.always", true);
+  // Whether or not history is shown when in search mode.
+  pref("browser.urlbar.unifiedSearchButton.historyInSearchMode", true);
+#else
+  pref("browser.urlbar.unifiedSearchButton.always", false);
+  pref("browser.urlbar.unifiedSearchButton.historyInSearchMode", false);
+#endif
 
 // Enable trending suggestions and recent searches.
 pref("browser.urlbar.trending.featureGate", true);
@@ -4037,7 +4042,7 @@ pref("browser.ipProtection.l10nGateVersion", 0);
 // Pref to enable support for site exceptions
 pref("browser.ipProtection.features.siteExceptions", true);
 // Pref to enable support for site inclusions
-pref("browser.ipProtection.features.siteInclusions", false);
+pref("browser.ipProtection.features.siteInclusions", true);
 // Pref to track if the site inclusion prompt has been shown in the VPN panel
 pref("browser.ipProtection.siteInclusionPromptShown", false);
 pref("browser.ipProtection.log", false);

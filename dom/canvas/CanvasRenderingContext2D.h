@@ -610,11 +610,13 @@ class CanvasRenderingContext2D : public nsICanvasRenderingContextInternal,
       mozilla::CanvasUtils::ImageExtraction aExtractionBehavior,
       int32_t* out_format, gfx::IntSize* out_imageSize) override;
 
-  void OnShutdown();
+  void OnShutdown() override;
 
   bool IsContextLost() const { return mIsContextLost; }
-  void OnRemoteCanvasLost();
-  void OnRemoteCanvasRestored();
+  void OnRemoteCanvasLost() override;
+  void OnRemoteCanvasRestored() override;
+  void OnRemoteCanvasReset(
+      const nsTArray<layers::RemoteTextureOwnerId>& aOwnerIds) override;
 
   /**
    * Update CurrentState().filter with the filter description for
@@ -642,13 +644,15 @@ class CanvasRenderingContext2D : public nsICanvasRenderingContextInternal,
 
   nsresult GetImageDataArray(JSContext* aCx, int32_t aX, int32_t aY,
                              uint32_t aWidth, uint32_t aHeight,
+                             PredefinedColorSpace aColorSpace,
                              nsIPrincipal& aSubjectPrincipal,
                              JSObject** aRetval);
 
   void PutImageData_explicit(int32_t aX, int32_t aY, ImageData&,
                              bool aHasDirtyRect, int32_t aDirtyX,
                              int32_t aDirtyY, int32_t aDirtyWidth,
-                             int32_t aDirtyHeight, ErrorResult&);
+                             int32_t aDirtyHeight,
+                             PredefinedColorSpace aColorSpace, ErrorResult&);
 
   bool CopyBufferProvider(layers::PersistentBufferProvider& aOld,
                           gfx::DrawTarget& aTarget, gfx::IntRect aCopyRect);
@@ -931,8 +935,6 @@ class CanvasRenderingContext2D : public nsICanvasRenderingContextInternal,
   // Which context properties apply to an SVG when calling drawImage.
   CanvasContextProperties mContextProperties = CanvasContextProperties::None;
 
-  bool AddShutdownObserver();
-  void RemoveShutdownObserver();
   bool AlreadyShutDown() const { return mHasShutdown; }
 
   /**
