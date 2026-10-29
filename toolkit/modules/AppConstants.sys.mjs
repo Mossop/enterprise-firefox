@@ -62,13 +62,6 @@ export var AppConstants = Object.freeze({
   false,
 #endif
 
-  MOZ_ENTERPRISE:
-#ifdef MOZ_ENTERPRISE
-  true,
-#else
-  false,
-#endif
-
   MOZ_DISABLE_PROFILE_PKCS11_MODULES:
 #ifdef MOZ_DISABLE_PROFILE_PKCS11_MODULES
   true,
