@@ -1239,6 +1239,47 @@ add_task(async function test_a_failed_migration_leaves_the_profile_on_json() {
   await s._finalize();
 });
 
+add_task(async function test_a_write_during_the_copy_fails_it() {
+  let { s, guids } = await setupStorageWithRecords("mig-midwrite.json", [
+    "Used Mid Copy",
+  ]);
+
+  // The JSON store keeps serving while the copy runs, and the address is used
+  // after it was read. Switching would lose that use, so the copy fails like
+  // any other, and the next attempt carries it.
+  const proto = Object.getPrototypeOf(s.addresses);
+  const realExport = proto._recordForMigrationExport;
+  proto._recordForMigrationExport = async function (record) {
+    const exported = await realExport.call(this, record);
+    this.notifyUsed(record.guid);
+    return exported;
+  };
+  try {
+    s = await enableRust(s);
+  } finally {
+    delete proto._recordForMigrationExport;
+  }
+
+  const [event] = migrationEvents();
+  Assert.equal(event?.extra.result, "error", "the copy was not accepted");
+  Assert.equal(
+    event.extra.error_code,
+    "SourceChanged",
+    "because the source changed under it"
+  );
+  Assert.ok(!getBool(ACTIVE_PREF), "the profile stays on JSON");
+  Assert.equal(getInt(ATTEMPTS_PREF), 1, "spending an attempt");
+
+  s = await restart(s);
+  Assert.equal(
+    (await activeRust(s).get(guids[0])).timesUsed,
+    1,
+    "the next launch migrates, with the use made during the failed copy"
+  );
+
+  await s._finalize();
+});
+
 // The no-wipe copy is driven through the migrator directly: the startup path
 // always wipes, and what these cover is the other half of that switch. The
 // profile's autofill.db outlives a task, so each starts from a known store.
@@ -1396,6 +1437,43 @@ add_task(async function test_flipping_the_pref_back_copies_to_json() {
     "and the one deleted there did not come back"
   );
   Assert.equal((await s.addresses.getAll()).length, 1, "so the stores match");
+
+  await s._finalize();
+});
+
+add_task(async function test_a_failed_copy_back_still_returns_to_json() {
+  const { s, guids } = await setupStorageWithRecords(
+    "mig-switch-back-fail.json",
+    ["Stays One"]
+  );
+  await RustAutofillAddressesAdapter.getInstance().wipe();
+
+  Services.prefs.setBoolPref(ENABLED_PREF, true);
+  await s._addressSwitch;
+  Assert.ok(getBool(ACTIVE_PREF), "Rust is serving");
+  const addedGuid = await s.addresses.add(addr("Added In Rust"));
+  const before = migrationEvents().length;
+
+  s._addresses.addManyWithMeta = records =>
+    Promise.resolve(records.map(() => ({ error: "injected failure" })));
+  try {
+    Services.prefs.setBoolPref(ENABLED_PREF, false);
+    await s._addressSwitch;
+  } finally {
+    delete s._addresses.addManyWithMeta;
+  }
+
+  Assert.ok(!getBool(ACTIVE_PREF), "the profile reads from JSON again");
+  const event = migrationEvents()[before];
+  Assert.equal(event?.extra.direction, "to_json", "the copy back was tried");
+  Assert.equal(event.extra.result, "error", "and reported as a failure");
+  Assert.equal(getInt(ATTEMPTS_PREF), 0, "without spending an attempt");
+  Assert.ok(await s.addresses.get(guids[0]), "JSON serves what it held");
+  Assert.equal(
+    await s.addresses.get(addedGuid),
+    null,
+    "without the record that did not make it back"
+  );
 
   await s._finalize();
 });
