@@ -808,6 +808,11 @@
   value: true
   mirror: always
 
+- name: apz.pan_gesture.buffer_max_age
+  type: uint32_t
+  value: 200  # milliseconds
+  mirror: once
+
 # Fetch displayport updates early from the message queue.
 - name: apz.pinch_lock.mode
   type: RelaxedAtomicInt32
@@ -10047,7 +10052,7 @@
   # Improve field initializer bytecode.
 - name: javascript.options.experimental.inline_simple_field_initializers
   type: bool
-  value: false
+  value: true
   mirror: always
   set_spidermonkey_pref: startup
 
@@ -11699,6 +11704,13 @@
 - name: layout.css.text-autospace.enabled
   type: bool
   value: true
+  mirror: always
+
+# Is support for CSS text-autospace-size property enabled?
+# https://github.com/w3c/csswg-drafts/issues/8510#issuecomment-6438888621
+- name: layout.css.text-autospace-size.enabled
+  type: bool
+  value: @IS_NIGHTLY_BUILD@
   mirror: always
 
 # Is support for CSS text-box property enabled?
@@ -15832,31 +15844,11 @@
   value: 10000
   mirror: always
 
-# Whether to use the network process or not
-# Start a separate socket process. Performing networking on the socket process
-# is control by a sepparate pref
-# ("network.http.network_access_on_socket_process.enabled").
-# Changing these prefs requires a restart.
-- name: network.process.enabled
-  type: RelaxedAtomicBool
-  mirror: always
-#if defined(ANDROID) || defined(MOZ_THUNDERBIRD) || defined(XP_IOS)
-  value: false # see bug 1641427
-#else
-  value: true
-#endif
-
 # When a protocol would be launched externally without a prompt (i.e. the
 # network.protocol-handler.external.<scheme> pref is set), require transient
 # user activation. Without activation we fall back to the external protocol
 # prompt instead of launching silently. See bug 299116.
 - name: network.protocol-handler.prompt-without-user-activation
-  type: RelaxedAtomicBool
-  value: true
-  mirror: always
-
-# Whether we can send OnDataAvailable to content process directly.
-- name: network.send_ODA_to_content_directly
   type: RelaxedAtomicBool
   value: true
   mirror: always
@@ -15891,14 +15883,6 @@
   type: RelaxedAtomicBool
   value: false
   mirror: always
-
-# Perform all network access on the socket process.
-# The pref requires "network.process.enabled" to be true.
-# Changing these prefs requires a restart.
-- name: network.http.network_access_on_socket_process.enabled
-  type: RelaxedAtomicBool
-  mirror: always
-  value: false
 
 # Telemetry of traffic categories. Whether or not to enable HttpTrafficAnalyzer.
 - name: network.traffic_analyzer.enabled
@@ -16302,11 +16286,6 @@
 #else
   value: true
 #endif
-  mirror: always
-
-- name: network.proxy.parse_pac_on_socket_process
-  type: RelaxedAtomicBool
-  value: false
   mirror: always
 
 - name: network.proxy.detect_system_proxy_changes
@@ -17196,6 +17175,16 @@
   mirror: always
   rust: true
 
+# HTTP3: Whether to use Alternative Backoff with ECN (RFC 8511), i.e. a smaller
+# multiplicative decrease on ECN-CE congestion events than on loss.
+# Has no effect unless network.http.http3.cc_algorithm is set to 1 (Cubic) and
+# network.http.http3.ecn_mark is true.
+- name: network.http.http3.abe
+  type: RelaxedAtomicBool
+  value: true
+  mirror: always
+  rust: true
+
 # Whether to send an mlkem768x25519 key share in HTTP/3 TLS handshakes.
 # Has no effect unless security.tls.enable_kyber is true.
 - name: network.http.http3.enable_kyber
@@ -17647,13 +17636,6 @@
 - name: network.mimesniff.sniff_misconfigured_types
   type: RelaxedAtomicBool
   value: true
-  mirror: always
-
-# The maximum count that we allow socket prrocess to crash. If this count is
-# reached, we won't use networking over socket process.
-- name: network.max_socket_process_failed_count
-  type: RelaxedAtomicUint32
-  value: 1
   mirror: always
 
 - name: network.allow_redirect_to_data
@@ -19102,12 +19084,6 @@
   mirror: always
   do_not_use_directly: true # Consumers should use SandboxSettings to ask.
 
-- name: security.sandbox.socket.process.level
-  type: int32_t
-  value: 0
-  mirror: always
-  do_not_use_directly: true # Consumers should use SandboxSettings to ask.
-
 # This controls the strength of the GPU process sandbox on Windows
 # and macOS. Changes will require restart. Levels have different meanings
 # on Windows and macOS. For information on what the level number means on
@@ -19158,13 +19134,6 @@
     value: true
     mirror: always
 
-  # Whether win32k is disabled for socket processes.
-  # true means win32k system calls are not permitted.
--   name: security.sandbox.socket.win32k-disable
-    type: RelaxedAtomicBool
-    value: true
-    mirror: always
-
   # Whether CET User Shadow Stack compatible modules only is enabled for the
   # relevant process type.
 -   name: security.sandbox.content.shadow-stack.enabled
@@ -19173,11 +19142,6 @@
     mirror: always
 
 -   name: security.sandbox.rdd.shadow-stack.enabled
-    type: RelaxedAtomicBool
-    value: true
-    mirror: always
-
--   name: security.sandbox.socket.shadow-stack.enabled
     type: RelaxedAtomicBool
     value: true
     mirror: always

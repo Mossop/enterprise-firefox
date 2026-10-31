@@ -1562,6 +1562,14 @@ Selection* PresShell::GetSelection(RawSelectionType aRawSelectionType) {
   return mSelection->GetSelection(ToSelectionType(aRawSelectionType));
 }
 
+Selection* PresShell::GetExistingSelection(RawSelectionType aRawSelectionType) {
+  if (!mSelection) {
+    return nullptr;
+  }
+
+  return mSelection->GetExistingSelection(ToSelectionType(aRawSelectionType));
+}
+
 Selection* PresShell::GetCurrentSelection(SelectionType aSelectionType) {
   if (!mSelection) {
     return nullptr;
@@ -4223,7 +4231,9 @@ bool PresShell::ScrollFrameIntoView(
         int32_t parentAPD = parent->PresContext()->AppUnitsPerDevPixel();
         rect = rect.ScaleToOtherAppUnitsRoundOut(APD, parentAPD);
         rect += extraOffset;
-      } else {
+      } else if (!container->PresContext()
+                      ->Document()
+                      ->IsTopLevelContentDocument()) {
         nsCOMPtr<nsIDocShell> docShell =
             container->PresContext()->GetDocShell();
         if (BrowserChild* browserChild = BrowserChild::GetFrom(docShell)) {

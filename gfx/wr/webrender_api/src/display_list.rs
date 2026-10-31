@@ -23,7 +23,9 @@ use crate::gradient_builder::GradientBuilder;
 use crate::color::{ColorF, ColorU};
 use crate::font::{FontInstanceKey, GlyphInstance, GlyphOptions};
 use crate::image::{ColorDepth, ImageKey};
-use crate::interned_prims::{RectangleKey, RectanglePrim};
+use crate::interned_prims::{
+    BoxShadow, BoxShadowKey, LineDecoration, LineDecorationKey, RectangleKey, RectanglePrim,
+};
 use crate::interning::{self, DlDelta};
 use crate::path::Path;
 use crate::key_types::{EdgeMask, GradientStopKey, PrimKeyCommonData, StretchSizeKey};
@@ -1240,6 +1242,7 @@ struct CapturedPrim {
 /// which the copy takes from the shadow.
 enum CapturedKey {
     Rectangle { transformed_aa_edges: EdgeMask },
+    Line(LineDecoration),
 }
 
 #[repr(C)]
@@ -1263,6 +1266,22 @@ fn aligned_aa_edges(flags: di::PrimitiveFlags) -> EdgeMask {
         EdgeMask::all()
     } else {
         EdgeMask::empty()
+    }
+}
+
+/// The common key data of a primitive whose item has `common` and whose
+/// primitive rect is `prim_rect`.
+fn prim_key_common(
+    common: &di::CommonItemProperties,
+    prim_rect: LayoutRect,
+    transformed_aa_edges: EdgeMask,
+) -> PrimKeyCommonData {
+    PrimKeyCommonData {
+        flags: common.flags,
+        aligned_aa_edges: aligned_aa_edges(common.flags),
+        transformed_aa_edges,
+        prim_rect: prim_rect.into(),
+        local_clip_rect: common.clip_rect.into(),
     }
 }
 
@@ -1605,13 +1624,7 @@ impl DisplayListBuilder {
         transformed_aa_edges: EdgeMask,
     ) -> interning::Handle<RectangleKey> {
         let key = RectangleKey::new(
-            PrimKeyCommonData {
-                flags: common.flags,
-                aligned_aa_edges: aligned_aa_edges(common.flags),
-                transformed_aa_edges,
-                prim_rect: bounds.into(),
-                local_clip_rect: common.clip_rect.into(),
-            },
+            prim_key_common(common, bounds, transformed_aa_edges),
             RectanglePrim { color: color.into() },
         );
 
@@ -1645,24 +1658,50 @@ impl DisplayListBuilder {
         color: &ColorF,
         style: di::LineStyle,
     ) {
-        // Same shadow-scope exception as `push_text`.
-        if !color_is_visible(*color) && self.pending_shadows.is_empty() {
+        // Same shadow-scope exception as `push_text`: an invisible line is
+        // still captured, with no handle, so its copy can carry the shadow's
+        // colour; the original re-emission drops it.
+        let visible = color_is_visible(*color);
+        if !visible && self.pending_shadows.is_empty() {
             return;
         }
 
         let (common, offset) = self.normalize_common(common);
         let area = self.shift_rect(*area, offset);
 
-        let item = di::DisplayItem::Line(di::LineDisplayItem {
-            common,
-            area,
-            wavy_line_thickness,
-            orientation,
-            color: *color,
+        let decoration = LineDecoration {
             style,
-        });
+            orientation,
+            wavy_line_thickness: Au::from_f32_px(wavy_line_thickness),
+            color: (*color).into(),
+        };
+        let line = if visible {
+            self.intern_line(&decoration, area, &common)
+        } else {
+            interning::Handle::INVALID
+        };
 
-        self.push_item(&item);
+        self.capture_prim(&common, area, CapturedKey::Line(decoration));
+
+        self.push_item(&di::DisplayItem::Line(di::LineDisplayItem {
+            spatial_id: common.spatial_id,
+            clip_chain_id: common.clip_chain_id,
+            line,
+        }));
+    }
+
+    fn intern_line(
+        &mut self,
+        kind: &LineDecoration,
+        area: LayoutRect,
+        common: &di::CommonItemProperties,
+    ) -> interning::Handle<LineDecorationKey> {
+        let key = LineDecorationKey::new(
+            prim_key_common(common, area, EdgeMask::all()),
+            kind.clone(),
+        );
+
+        self.interners.intern(&key)
     }
 
     pub fn push_image(
@@ -1977,16 +2016,26 @@ impl DisplayListBuilder {
             }
         };
 
+        // Every field is relative to the shadow's own rect, so the key does
+        // not churn as the element moves; only `prim_rect` in the common data
+        // does, and that is what the store's template carries.
+        let key = BoxShadowKey::new(
+            prim_key_common(&common, bounds, EdgeMask::all()),
+            BoxShadow {
+                color: color.into(),
+                blur_radius: Au::from_f32_px(blur_radius),
+                clip_mode,
+                shadow_radius: shadow_radius.into(),
+                element_radius: border_radius.into(),
+                box_offset: offset.into(),
+                spread_amount: Au::from_f32_px(spread_amount),
+            },
+        );
+
         let item = di::DisplayItem::BoxShadow(di::BoxShadowDisplayItem {
-            common,
-            bounds,
-            offset,
-            color,
-            blur_radius,
-            spread_amount,
-            border_radius,
-            shadow_radius,
-            clip_mode,
+            spatial_id: common.spatial_id,
+            clip_chain_id: common.clip_chain_id,
+            box_shadow: self.interners.intern(&key),
         });
 
         self.push_item(&item);
@@ -3035,8 +3084,8 @@ impl DisplayListBuilder {
                         // One entry per captured interned primitive, in capture
                         // order.
                         key: match draw {
-                            di::DisplayItem::Rectangle(..) => Some(
-                                captured_keys.next().expect("rectangle item without its captured key"),
+                            di::DisplayItem::Rectangle(..) | di::DisplayItem::Line(..) => Some(
+                                captured_keys.next().expect("primitive item without its captured key"),
                             ),
                             _ => None,
                         },
@@ -3148,7 +3197,7 @@ impl DisplayListBuilder {
                 let visible = match entry.item {
                     di::DisplayItem::Text(ref info) => color_is_visible(info.color),
                     di::DisplayItem::Rectangle(ref info) => info.rect != interning::Handle::INVALID,
-                    di::DisplayItem::Line(ref info) => color_is_visible(info.color),
+                    di::DisplayItem::Line(ref info) => info.line != interning::Handle::INVALID,
                     _ => true,
                 };
                 if !visible {
@@ -3194,6 +3243,18 @@ impl DisplayListBuilder {
                     rect,
                 })
             }
+            CapturedKey::Line(ref decoration) => {
+                let line = self.intern_line(
+                    &LineDecoration { color: color.into(), ..decoration.clone() },
+                    bounds,
+                    &common,
+                );
+                di::DisplayItem::Line(di::LineDisplayItem {
+                    spatial_id: common.spatial_id,
+                    clip_chain_id: common.clip_chain_id,
+                    line,
+                })
+            }
         }
     }
 
@@ -3221,8 +3282,8 @@ impl DisplayListBuilder {
         let shift = |common| shadow_copy_common(common, offset);
 
         Some(match item {
-            // Interned from its captured key, see `intern_shadow_copy`.
-            Rectangle(..) => unreachable!("rectangle shadow copies are interned from their captured key"),
+            // Interned from their captured keys, see `intern_shadow_copy`.
+            Rectangle(..) | Line(..) => unreachable!("shadow copy of a primitive with a captured key"),
             Text(info) => Text(di::TextDisplayItem {
                 common: shift(info.common),
                 bounds: info.bounds.translate(offset),
@@ -3233,12 +3294,6 @@ impl DisplayListBuilder {
             Image(info) => Image(di::ImageDisplayItem {
                 common: shift(info.common),
                 bounds: info.bounds.translate(offset),
-                color,
-                ..*info
-            }),
-            Line(info) => Line(di::LineDisplayItem {
-                common: shift(info.common),
-                area: info.area.translate(offset),
                 color,
                 ..*info
             }),
@@ -3543,6 +3598,356 @@ mod rectangle_interning_tests {
 
         let (_, dl) = builder.end();
         assert_eq!(dl.delta().rectangles.adds.len(), 2);
+    }
+}
+
+#[cfg(test)]
+mod box_shadow_interning_tests {
+    use super::*;
+
+    const ELEMENT: LayoutRect = LayoutRect {
+        min: LayoutPoint::new(0.0, 0.0),
+        max: LayoutPoint::new(100.0, 100.0),
+    };
+
+    fn common() -> di::CommonItemProperties {
+        let pipeline_id = PipelineId::dummy();
+        di::CommonItemProperties {
+            clip_rect: LayoutRect::from_size(LayoutSize::new(1000.0, 1000.0)),
+            clip_chain_id: di::ClipChainId::INVALID,
+            spatial_id: di::SpatialId::root_scroll_node(pipeline_id),
+            flags: di::PrimitiveFlags::default(),
+        }
+    }
+
+    /// A plain blurred outset shadow, varying only what the caller passes.
+    fn push_shadow(
+        builder: &mut DisplayListBuilder,
+        bounds: LayoutRect,
+        color: ColorF,
+        blur_radius: f32,
+    ) {
+        builder.push_box_shadow(
+            &common(),
+            bounds,
+            LayoutVector2D::new(2.0, 3.0),
+            color,
+            blur_radius,
+            0.0,
+            di::BorderRadius::zero(),
+            di::BorderRadius::zero(),
+            di::BoxShadowClipMode::Outset,
+        );
+    }
+
+    fn shadow_items(dl: &BuiltDisplayList) -> Vec<di::BoxShadowDisplayItem> {
+        let mut items = Vec::new();
+        let mut iter = dl.iter();
+        while let Some(item) = iter.next() {
+            if let di::DisplayItem::BoxShadow(info) = item.item() {
+                items.push(*info);
+            }
+        }
+        items
+    }
+
+    #[test]
+    fn identical_shadows_in_one_list_intern_once() {
+        let mut builder = DisplayListBuilder::new(PipelineId::dummy());
+        builder.begin(60.0);
+
+        // The repeat of a shadow is the common case on a real page: a card grid
+        // gives every card the same colour, blur, spread and radii.
+        push_shadow(&mut builder, ELEMENT, ColorF::BLACK, 4.0);
+        push_shadow(&mut builder, ELEMENT, ColorF::BLACK, 4.0);
+        push_shadow(&mut builder, ELEMENT, ColorF::BLACK, 4.0);
+
+        let (_, dl) = builder.end();
+        assert_eq!(dl.delta().box_shadows.adds.len(), 1);
+        let items = shadow_items(&dl);
+        assert_eq!(items.len(), 3);
+        assert_eq!(items[0].box_shadow, items[2].box_shadow);
+    }
+
+    #[test]
+    fn a_moved_shadow_is_a_different_entry() {
+        let mut builder = DisplayListBuilder::new(PipelineId::dummy());
+
+        builder.begin(60.0);
+        push_shadow(&mut builder, ELEMENT, ColorF::BLACK, 4.0);
+        let (_, first) = builder.end();
+        assert_eq!(first.delta().box_shadows.adds.len(), 1);
+
+        // The prim rect is in the key, as it was in the scene builder's, so a
+        // shadow that moves in local space is a new entry and the old one is
+        // retained for a while before the GC removes it.
+        builder.begin(60.0);
+        push_shadow(&mut builder, ELEMENT.translate(LayoutVector2D::new(0.0, 40.0)), ColorF::BLACK, 4.0);
+        let (_, second) = builder.end();
+        assert_eq!(second.delta().box_shadows.adds.len(), 1);
+        assert!(second.delta().box_shadows.removes.is_empty());
+
+        // Unchanged, it is reused and the steady-state delta is empty.
+        builder.begin(60.0);
+        push_shadow(&mut builder, ELEMENT.translate(LayoutVector2D::new(0.0, 40.0)), ColorF::BLACK, 4.0);
+        let (_, third) = builder.end();
+        assert!(third.delta().box_shadows.is_empty());
+    }
+
+    #[test]
+    fn blur_is_part_of_the_key() {
+        let mut builder = DisplayListBuilder::new(PipelineId::dummy());
+        builder.begin(60.0);
+
+        push_shadow(&mut builder, ELEMENT, ColorF::BLACK, 4.0);
+        push_shadow(&mut builder, ELEMENT, ColorF::BLACK, 8.0);
+
+        let (_, dl) = builder.end();
+        assert_eq!(dl.delta().box_shadows.adds.len(), 2);
+    }
+
+    #[test]
+    fn an_over_max_blur_is_clamped_into_one_entry() {
+        let mut builder = DisplayListBuilder::new(PipelineId::dummy());
+        builder.begin(60.0);
+
+        // Clamping happens before the key is built, so two absurd radii are one
+        // shadow rather than two entries that render identically.
+        push_shadow(&mut builder, ELEMENT, ColorF::BLACK, di::MAX_BLUR_RADIUS + 1.0);
+        push_shadow(&mut builder, ELEMENT, ColorF::BLACK, di::MAX_BLUR_RADIUS + 500.0);
+
+        let (_, dl) = builder.end();
+        assert_eq!(dl.delta().box_shadows.adds.len(), 1);
+    }
+
+    #[test]
+    fn a_transparent_shadow_is_not_interned() {
+        let mut builder = DisplayListBuilder::new(PipelineId::dummy());
+        builder.begin(60.0);
+
+        push_shadow(&mut builder, ELEMENT, ColorF::TRANSPARENT, 4.0);
+
+        let (_, dl) = builder.end();
+        assert!(dl.delta().box_shadows.is_empty(), "invisible shadow was interned");
+        assert!(shadow_items(&dl).is_empty());
+    }
+
+    #[test]
+    fn a_rejected_shadow_is_not_interned() {
+        let mut builder = DisplayListBuilder::new(PipelineId::dummy());
+        builder.begin(60.0);
+
+        // Spread collapses the shadow rect to nothing, so there is no primitive
+        // and nothing to intern for it.
+        builder.push_box_shadow(
+            &common(),
+            ELEMENT,
+            LayoutVector2D::zero(),
+            ColorF::BLACK,
+            4.0,
+            -100.0,
+            di::BorderRadius::zero(),
+            di::BorderRadius::zero(),
+            di::BoxShadowClipMode::Outset,
+        );
+
+        let (_, dl) = builder.end();
+        assert!(dl.delta().box_shadows.is_empty(), "empty shadow was interned");
+        assert!(shadow_items(&dl).is_empty());
+    }
+
+    #[test]
+    fn a_zero_blur_shadow_never_reaches_the_interner() {
+        let mut builder = DisplayListBuilder::new(PipelineId::dummy());
+        builder.begin(60.0);
+
+        // Desugared into a rect plus shaping clips, so it is not a box shadow
+        // by the time anything could intern one.
+        push_shadow(&mut builder, ELEMENT, ColorF::BLACK, 0.0);
+
+        let (_, dl) = builder.end();
+        assert!(dl.delta().box_shadows.is_empty());
+        assert!(shadow_items(&dl).is_empty());
+        assert_eq!(dl.delta().rectangles.adds.len(), 1, "the desugared rect is interned instead");
+    }
+
+    #[test]
+    fn the_two_clip_modes_do_not_share_an_entry() {
+        let mut builder = DisplayListBuilder::new(PipelineId::dummy());
+        builder.begin(60.0);
+
+        for clip_mode in [di::BoxShadowClipMode::Outset, di::BoxShadowClipMode::Inset] {
+            builder.push_box_shadow(
+                &common(),
+                ELEMENT,
+                LayoutVector2D::new(2.0, 3.0),
+                ColorF::BLACK,
+                4.0,
+                1.0,
+                di::BorderRadius::zero(),
+                di::BorderRadius::zero(),
+                clip_mode,
+            );
+        }
+
+        // Not just the mode: the spread's sign and the flags differ with it.
+        let (_, dl) = builder.end();
+        assert_eq!(dl.delta().box_shadows.adds.len(), 2);
+    }
+
+    #[test]
+    fn one_build_covers_every_interner() {
+        let mut builder = DisplayListBuilder::new(PipelineId::dummy());
+
+        // A build that interns one type still advances the other, so a receiver
+        // reading one build number per display list sees a contiguous stream
+        // whichever type it is checking.
+        builder.begin(60.0);
+        push_shadow(&mut builder, ELEMENT, ColorF::BLACK, 4.0);
+        let (_, first) = builder.end();
+
+        builder.begin(60.0);
+        let (_, second) = builder.end();
+
+        assert_eq!(first.delta().builder, second.delta().builder);
+        assert_eq!(first.delta().build.0 + 1, second.delta().build.0);
+        assert!(first.delta().rectangles.is_empty());
+    }
+}
+
+#[cfg(test)]
+mod line_decoration_interning_tests {
+    use super::*;
+
+    const AREA: LayoutRect = LayoutRect {
+        min: LayoutPoint::new(0.0, 90.0),
+        max: LayoutPoint::new(200.0, 92.0),
+    };
+
+    fn common() -> di::CommonItemProperties {
+        let pipeline_id = PipelineId::dummy();
+        di::CommonItemProperties {
+            clip_rect: LayoutRect::from_size(LayoutSize::new(1000.0, 1000.0)),
+            clip_chain_id: di::ClipChainId::INVALID,
+            spatial_id: di::SpatialId::root_scroll_node(pipeline_id),
+            flags: di::PrimitiveFlags::default(),
+        }
+    }
+
+    fn push(builder: &mut DisplayListBuilder, color: ColorF, style: di::LineStyle) {
+        builder.push_line(
+            &common(),
+            &AREA,
+            1.0,
+            di::LineOrientation::Horizontal,
+            &color,
+            style,
+        );
+    }
+
+    fn line_items(dl: &BuiltDisplayList) -> Vec<di::LineDisplayItem> {
+        let mut items = Vec::new();
+        let mut iter = dl.iter();
+        while let Some(item) = iter.next() {
+            if let di::DisplayItem::Line(info) = item.item() {
+                items.push(*info);
+            }
+        }
+        items
+    }
+
+    #[test]
+    fn identical_lines_intern_once() {
+        let mut builder = DisplayListBuilder::new(PipelineId::dummy());
+        builder.begin(60.0);
+
+        push(&mut builder, ColorF::BLACK, di::LineStyle::Solid);
+        push(&mut builder, ColorF::BLACK, di::LineStyle::Solid);
+        push(&mut builder, ColorF::BLACK, di::LineStyle::Dotted);
+
+        let (_, dl) = builder.end();
+        assert_eq!(dl.delta().line_decorations.adds.len(), 2, "style is part of the key");
+        let items = line_items(&dl);
+        assert_eq!(items.len(), 3);
+        assert_eq!(items[0].line, items[1].line);
+        assert_ne!(items[0].line, items[2].line);
+    }
+
+    #[test]
+    fn a_transparent_line_is_dropped_at_record_time() {
+        let mut builder = DisplayListBuilder::new(PipelineId::dummy());
+        builder.begin(60.0);
+
+        push(&mut builder, ColorF::TRANSPARENT, di::LineStyle::Solid);
+
+        let (_, dl) = builder.end();
+        assert!(dl.delta().line_decorations.is_empty());
+        assert!(line_items(&dl).is_empty());
+    }
+
+    #[test]
+    fn a_transparent_line_still_casts_a_shadow() {
+        let mut builder = DisplayListBuilder::new(PipelineId::dummy());
+        builder.begin(60.0);
+
+        let red = ColorF::new(1.0, 0.0, 0.0, 1.0);
+        builder.push_shadow(
+            &di::SpaceAndClipInfo {
+                spatial_id: di::SpatialId::root_scroll_node(PipelineId::dummy()),
+                clip_chain_id: di::ClipChainId::INVALID,
+            },
+            di::Shadow {
+                offset: LayoutVector2D::new(0.0, 2.0),
+                color: red,
+                blur_radius: 0.0,
+            },
+            true,
+        );
+        push(&mut builder, ColorF::TRANSPARENT, di::LineStyle::Wavy);
+        builder.pop_all_shadows();
+
+        // Only the copy survives, in the shadow's colour and with the
+        // original's style; the handle-less original is not re-emitted.
+        let (_, dl) = builder.end();
+        let adds = &dl.delta().line_decorations.adds;
+        assert_eq!(adds.len(), 1);
+        assert_eq!(adds[0].key.kind.color, red.into());
+        assert_eq!(adds[0].key.kind.style, di::LineStyle::Wavy);
+        // The item carries no geometry, so the copy's comes from the captured
+        // key, moved by the shadow offset.
+        let offset = LayoutVector2D::new(0.0, 2.0);
+        assert_eq!(adds[0].key.common.prim_rect, AREA.translate(offset).into());
+        assert_eq!(adds[0].key.common.local_clip_rect, common().clip_rect.translate(offset).into());
+        let items = line_items(&dl);
+        assert_eq!(items.len(), 1);
+        assert_ne!(items[0].line, interning::Handle::INVALID);
+    }
+
+    #[test]
+    fn a_shadowed_line_interns_its_copy_separately() {
+        let mut builder = DisplayListBuilder::new(PipelineId::dummy());
+        builder.begin(60.0);
+
+        builder.push_shadow(
+            &di::SpaceAndClipInfo {
+                spatial_id: di::SpatialId::root_scroll_node(PipelineId::dummy()),
+                clip_chain_id: di::ClipChainId::INVALID,
+            },
+            di::Shadow {
+                offset: LayoutVector2D::new(0.0, 2.0),
+                color: ColorF::new(1.0, 0.0, 0.0, 1.0),
+                blur_radius: 0.0,
+            },
+            true,
+        );
+        push(&mut builder, ColorF::BLACK, di::LineStyle::Dashed);
+        builder.pop_all_shadows();
+
+        let (_, dl) = builder.end();
+        assert_eq!(dl.delta().line_decorations.adds.len(), 2);
+        let items = line_items(&dl);
+        assert_eq!(items.len(), 2);
+        assert_ne!(items[0].line, items[1].line);
     }
 }
 

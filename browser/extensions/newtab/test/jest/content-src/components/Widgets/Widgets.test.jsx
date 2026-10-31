@@ -1042,6 +1042,48 @@ function makeNovaWidgetState(widgets, extraPrefs = {}) {
   };
 }
 
+describe("<Widgets> sidebar widget leaves the row", () => {
+  const PRIVACY_SIDEBAR = {
+    "widgets.privacy.enabled": true,
+    "widgets.system.privacy.enabled": true,
+    "widgets.privacy.size": "small",
+    trainhopConfig: { widgets: { privacySidebar: true } },
+  };
+
+  function rowWidgetIds(container) {
+    return [
+      ...container.querySelectorAll(".widget-wrapper[data-widget-id]"),
+    ].map(el => el.getAttribute("data-widget-id"));
+  }
+
+  it("keeps small weather out of the row", () => {
+    const state = makeNovaWidgetState([
+      ["lists", "medium"],
+      ["weather", "small"],
+    ]);
+    const { container } = renderWidgets(state);
+    expect(rowWidgetIds(container)).toEqual(["lists"]);
+  });
+
+  it("keeps privacy out of the row when trainhop places it in the sidebar", () => {
+    const state = makeNovaWidgetState([["lists", "medium"]], PRIVACY_SIDEBAR);
+    const { container } = renderWidgets(state);
+    expect(rowWidgetIds(container)).toEqual(["lists"]);
+  });
+
+  it("puts the widget that loses the single sidebar slot in the row", () => {
+    const state = makeNovaWidgetState(
+      [
+        ["lists", "medium"],
+        ["weather", "small"],
+      ],
+      PRIVACY_SIDEBAR
+    );
+    const { container } = renderWidgets(state);
+    expect(rowWidgetIds(container)).toEqual(["lists", "privacy"]);
+  });
+});
+
 describe("<Widgets> overflow detection", () => {
   function getSectionContainer(container) {
     return container.querySelector(".widgets-section-container");
@@ -1629,6 +1671,38 @@ describe("<Widgets> maximize toggle size sync", () => {
     expect(weatherSets).toHaveLength(0);
   });
 
+  it("resizes a small widget that lost the sidebar slot", () => {
+    const state = makeNovaWidgetState(
+      [
+        ["clocks", "medium"],
+        ["weather", "small"],
+      ],
+      {
+        ...MAXIMIZABLE,
+        "widgets.privacy.enabled": true,
+        "widgets.system.privacy.enabled": true,
+        "widgets.privacy.size": "small",
+        trainhopConfig: { widgets: { privacySidebar: true } },
+      }
+    );
+    const { container, store } = renderWidgets(state);
+
+    clickMaximize(container);
+
+    const sets = sizePrefSets(store);
+    expect(sets).toContainEqual(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          name: "widgets.privacy.size",
+          value: "large",
+        }),
+      })
+    );
+    expect(
+      sets.filter(action => action.data.name === "widgets.weather.size")
+    ).toHaveLength(0);
+  });
+
   it("resizes weather when it is in the row (not small)", () => {
     const state = makeNovaWidgetState(
       [
@@ -1778,7 +1852,7 @@ describe("<Widgets> auto-minimize layout", () => {
   });
 
   it("collapses the section after the configured delay", () => {
-    const { container, store } = renderWidgets(
+    const { container } = renderWidgets(
       makeState({
         "pageLayouts.variant": "auto-minimize-widgets",
         "pageLayouts.autoMinimizeDelayMs": 3000,
@@ -1798,13 +1872,6 @@ describe("<Widgets> auto-minimize layout", () => {
     expect(widgetsContainer(container)).toHaveAttribute(
       "data-section-collapsed"
     );
-    expect(containerActions(store)).toEqual([
-      {
-        action_type: "auto_minimize",
-        action_value: "collapse_section",
-        widget_size: "medium",
-      },
-    ]);
   });
 
   it("prefers the trainhopConfig delay over the pref", () => {
@@ -1917,7 +1984,6 @@ describe("<Widgets> auto-minimize layout", () => {
     act(() => {
       jest.advanceTimersByTime(100);
     });
-    expect(containerActions(store)).toHaveLength(1);
 
     // Any PREF_CHANGED hands the component a fresh prefs object.
     act(() => {
@@ -1930,11 +1996,6 @@ describe("<Widgets> auto-minimize layout", () => {
       jest.advanceTimersByTime(60000);
     });
 
-    expect(
-      containerActions(store).filter(
-        data => data.action_value === "collapse_section"
-      )
-    ).toHaveLength(1);
     expect(widgetsContainer(container)).toHaveAttribute(
       "data-section-collapsed"
     );

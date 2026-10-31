@@ -245,7 +245,7 @@ tasks:
 
                       # Note: This task is built server side without the context or tooling that
                       # exist in tree so we must hard code the hash
-                      image: 'mozillareleases/gecko_decision:5.1.0@sha256:8879ecb7f859e1001b0aa67de440a18c3a896446bfd0e2e87688bb367e590667'
+                      image: 'mozillareleases/gecko_decision:6.0.0@sha256:e17e2b35c915d7059de5ccb0295d53b04cdc1c4970c8a69d34a079abe3a47729'
 
                       maxRunTime: 1800
 
@@ -750,7 +750,7 @@ tasks:
                               'baseRef == "enterprise-beta" || baseRef == "refs/heads/enterprise-beta"': "refs/heads/beta"
                               'baseRef == "enterprise-release" || baseRef == "refs/heads/enterprise-release"': "refs/heads/release"
                               $default: "master"
-                  commBaseRev: 3a9018f11835746c39bc057bb8e3d4125db91597
+                  commBaseRev: b88504cf0368fcf8beef5d03b982e7d23869f2ef
                   commHeadRepoUrl: https://github.com/thunderbird/thunderbird-desktop
                   commHeadRef:
                       $if: 'project == "enterprise-firefox-try"'
@@ -761,7 +761,7 @@ tasks:
                               'baseRef == "enterprise-beta" || baseRef == "refs/heads/enterprise-beta"': "refs/heads/beta"
                               'baseRef == "enterprise-release" || baseRef == "refs/heads/enterprise-release"': "refs/heads/release"
                               $default: "master"
-                  commHeadRev: 3a9018f11835746c39bc057bb8e3d4125db91597
+                  commHeadRev: b88504cf0368fcf8beef5d03b982e7d23869f2ef
                   shortRef:
                       $if: 'ref[:11] == "refs/heads/"'
                       then: {$eval: 'ref[11:]'}

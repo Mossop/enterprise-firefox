@@ -82,14 +82,14 @@ def transform(monkeypatch, config):
     [
         pytest.param("M", "Mochitests", id="no_variants"),
         pytest.param(
-            "M-spi",
-            "Mochitests with socket process enabled",
-            id="spi variant",
+            "M-xorig",
+            "Mochitests with cross-origin",
+            id="xorig variant",
         ),
         pytest.param(
-            "M-spi-nofis",
-            "Mochitests without fission enabled with socket process enabled",
-            id="spi and nofis variants",
+            "M-xorig-nofis",
+            "Mochitests without fission enabled with cross-origin",
+            id="xorig and nofis variants",
         ),
         pytest.param("M-fake", "", id="invalid group name"),
     ],
@@ -99,6 +99,31 @@ def test_group_name(config, groupSymbol, description):
     group_names = config.graph_config["treeherder"]["group-names"]
     generated_description = group_name_variant(group_names, groupSymbol)
     assert description == generated_description
+
+
+def test_use_gradle(transform):
+    taskdesc = transform({
+        "worker-type": "b-linux-docker-amd",
+        "use-gradle": "offline",
+        "use-gradle-cache": True,
+    })[2]
+
+    assert taskdesc["worker"] == {
+        "implementation": "docker-worker",
+        "os": "linux",
+        "env": {
+            "GRADLE_FLAGS": "--offline --daemon",
+            "GRADLE_USER_HOME": "/builds/worker/gradle-user-home",
+        },
+        "caches": [
+            {
+                "type": "persistent",
+                "name": "gradle-user-home",
+                "mount-point": "/builds/worker/gradle-user-home",
+                "skip-untrusted": False,
+            }
+        ],
+    }
 
 
 @pytest.mark.parametrize(

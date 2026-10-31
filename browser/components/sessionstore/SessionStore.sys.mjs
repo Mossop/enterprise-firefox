@@ -7038,6 +7038,7 @@ class _SessionStore {
     TAB_STATE_FOR_BROWSER.set(browser, TAB_STATE_RESTORING);
     aTab.removeAttribute("pending");
     aTab.removeAttribute("discarded");
+    aTab.removeAttribute("discarded-skip-on-close");
   }
 
   /**
@@ -8495,6 +8496,7 @@ class _SessionStore {
 
     aTab.removeAttribute("pending");
     aTab.removeAttribute("discarded");
+    aTab.removeAttribute("discarded-skip-on-close");
 
     if (previousState == TAB_STATE_RESTORING) {
       if (this.#tabsRestoringCount) {
@@ -8686,9 +8688,22 @@ class _SessionStore {
         return callbacks.onHistoryReload();
       },
 
-      // TODO(bug 2075170): Handle OnHistoryNewEntry as well.
-      OnHistoryNewEntry() {},
+      OnHistoryNewEntry(newURI, oldIndex) {
+        // purgeSessionHistory() re-adds the active entry before purging the
+        // rest, which is bookkeeping rather than a navigation.
+        let shistory = browser.browsingContext?.sessionHistory;
+        let activeEntry =
+          shistory && oldIndex >= 0 ? shistory.getEntryAtIndex(oldIndex) : null;
+        if (activeEntry?.URI.equals(newURI)) {
+          return;
+        }
+
+        this.unregister();
+        // The new entry is added after this notification returns.
+        Services.tm.dispatchToMainThread(callbacks.onHistoryNewEntry);
+      },
       OnHistoryGotoIndex() {},
+      OnHistoryTruncate() {},
       OnHistoryPurge() {},
       OnHistoryReplaceEntry() {},
 
@@ -8759,6 +8774,19 @@ class _SessionStore {
           onHistoryReload: () => {
             this.#restoreTabContentForBrowser(browser);
             return false;
+          },
+
+          onHistoryNewEntry: () => {
+            let shistory = browser.browsingContext?.sessionHistory;
+            if (
+              !shistory ||
+              TAB_STATE_FOR_BROWSER.get(browser) !== TAB_STATE_NEEDS_RESTORE
+            ) {
+              return;
+            }
+            this.#tabStateToRestore.delete(browser.permanentKey);
+            this.#restoreTabContentForBrowser(browser);
+            shistory.reloadCurrentEntry();
           },
 
           // Some foreign code, like an extension, loaded a new URI on the

@@ -758,6 +758,8 @@
     <string name="preferences_toolbar_select_shortcut">Select a shortcut</string>
     <!-- Title of a menu option allowing to change the shortcut button shown in the toolbar -->
     <string name="toolbar_shortcut_menu_edit_option">Edit shortcut</string>
+    <!-- Preference category for menu customization -->
+    <string name="preferences_menu">Menu</string>
     <!-- Preference for gestures based actions -->
     <string name="preferences_gestures">Gestures</string>
     <!-- Preference for settings related to visual options -->
@@ -1191,6 +1193,12 @@
     <string name="preference_simple_toolbar">Simple</string>
     <!-- Preference for using expanded toolbar -->
     <string name="preference_expanded_toolbar">Expanded</string>
+    <!-- Preference for changing where the search bar is positioned on the homepage, shown when the user has set the address bar to be displayed at the top of the screen -->
+    <string name="preferences_homepage_search_location">Homepage search location</string>
+    <!-- Preference for showing the homepage search bar in the middle of the homepage -->
+    <string name="preference_homepage_search_location_middle">Middle</string>
+    <!-- Preference for showing the homepage search bar at the top of the homepage (combined with the address bar, already displayed at the top) -->
+    <string name="preference_homepage_search_location_top">Top</string>
 
     <!-- New tab shortcut in toolbar customization -->
     <string name="toolbar_customize_shortcut_new_tab">Open a new tab</string>
@@ -2999,6 +3007,14 @@
     <string name="credit_cards_warning_dialog_set_up_now">Set up now</string>
     <!-- Negative button to ignore warning dialog if users have no device authentication set up -->
     <string name="credit_cards_warning_dialog_later">Later</string>
+    <!-- Title of the dialog shown on Android Automotive OS (in cars) when users have no device authentication set up and try to access their saved passwords, payment methods, or sign in to their account -->
+    <string name="automotive_authentication_setup_dialog_title">Secure your sensitive data</string>
+    <!-- Message of the dialog shown on Android Automotive OS (in cars) when users have no device authentication set up and try to access their saved passwords, payment methods, or sign in to their account -->
+    <string name="automotive_authentication_setup_dialog_message">Set up a device lock pattern, PIN, or password to protect your saved sensitive data from being accessed if someone else is driving your car.</string>
+    <!-- Primary button on the dialog shown on Android Automotive OS (in cars). Tapping it directs users to the device settings to set up a device lock -->
+    <string name="automotive_authentication_setup_dialog_set_up_now">Set up now</string>
+    <!-- Secondary button of the dialog shown on Android Automotive OS (in cars). Tapping closes the dialogue and cancels the action that triggered the dialogue. -->
+    <string name="automotive_authentication_setup_dialog_cancel">Cancel</string>
     <!-- Title of PIN verification dialog to direct users to re-enter their device credentials to access their credit cards -->
     <string name="credit_cards_biometric_prompt_message_pin">Unlock your device</string>
     <!-- Message displayed in biometric prompt for authentication, before allowing users to use their stored payment method information -->

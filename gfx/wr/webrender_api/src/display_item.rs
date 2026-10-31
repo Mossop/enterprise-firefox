@@ -375,23 +375,16 @@ pub struct HitTestDisplayItem {
 
 #[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Serialize, PeekPoke)]
 pub struct LineDisplayItem {
-    pub common: CommonItemProperties,
-    /// We need a separate rect from common.clip_rect to encode cute
-    /// tricks that firefox does to make a series of text-decorations seamlessly
-    /// line up -- snapping the decorations to a multiple of their period, and
-    /// then clipping them to their "proper" area. This rect is that "logical"
-    /// snapped area that may be clipped to the right size by the clip_rect.
-    pub area: LayoutRect,
-    /// Whether the rect is interpretted as vertical or horizontal
-    pub orientation: LineOrientation,
-    /// This could potentially be implied from area, but we currently prefer
-    /// that this is the responsibility of the layout engine. Value irrelevant
-    /// for non-wavy lines.
-    // FIXME: this was done before we could use tagged unions in enums, but now
-    // it should just be part of LineStyle::Wavy.
-    pub wavy_line_thickness: f32,
-    pub color: ColorF,
-    pub style: LineStyle,
+    pub spatial_id: SpatialId,
+    pub clip_chain_id: ClipChainId,
+    /// The interned decoration: style, orientation, wavy thickness and colour,
+    /// with the line's area as the key's prim rect. The area is separate from
+    /// the clip rect to encode the trick Firefox uses to make a series of
+    /// text decorations line up seamlessly: snap them to a multiple of their
+    /// period, then clip them to their proper area.
+    /// `Handle::INVALID` marks a fully transparent line captured inside a
+    /// shadow scope only so its copy can be drawn.
+    pub line: crate::interning::Handle<crate::interned_prims::LineDecorationKey>,
 }
 
 #[repr(u8)]
@@ -683,21 +676,15 @@ pub const MAX_BLUR_RADIUS: f32 = 300.;
 
 #[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Serialize, PeekPoke)]
 pub struct BoxShadowDisplayItem {
-    pub common: CommonItemProperties,
-    /// The shadow's local rect: the blur-inflated outer rect for `Outset`, the
-    /// element rect for `Inset`. `prepare_box_shadow` recovers the element rect
-    /// from this and the clip mode.
-    pub bounds: LayoutRect,
-    pub offset: LayoutVector2D,
-    pub color: ColorF,
-    /// Already clamped to `MAX_BLUR_RADIUS`.
-    pub blur_radius: f32,
-    /// The authored spread radius, signed by the clip mode: inset shadows get
-    /// smaller as it increases, so this is `-spread_radius` for `Inset`.
-    pub spread_amount: f32,
-    pub border_radius: BorderRadius,
-    pub shadow_radius: BorderRadius,
-    pub clip_mode: BoxShadowClipMode,
+    pub spatial_id: SpatialId,
+    pub clip_chain_id: ClipChainId,
+    /// The shadow's entry in the builder's interner, which holds the colour,
+    /// the blur (clamped to `MAX_BLUR_RADIUS`), the spread signed by the clip
+    /// mode, both radii, the offset and the clip mode, all relative to the
+    /// shadow's own rect. That rect is the prim rect in the key's common data:
+    /// the blur-inflated outer rect for `Outset`, the element rect for `Inset`.
+    /// `prepare_box_shadow` recovers the element rect from it and the clip mode.
+    pub box_shadow: crate::interning::Handle<crate::interned_prims::BoxShadowKey>,
 }
 
 #[repr(C)]
